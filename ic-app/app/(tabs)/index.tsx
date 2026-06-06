@@ -1,98 +1,110 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { ScrollView, Text } from "react-native";
+import Card from "../../components/Card";
+import Button from "../../components/Button";
+import SectionTitle from "../../components/SectionTitle";
+import theme from "../../theme";
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabase";
+import { useUser } from "../../contexts/UserContext";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const mockUsers = [
+  {
+    email: "my9689@princeton.edu",
+    name: "Miyu Yamane",
+  },
+  {
+    email: "sk0546@princeton.edu",
+    name: "Sophie Kim",
+  },
+  {
+    email: "sc5819@princeton.edu",
+    name: "Susan Chen",
+  }
+];
 
-export default function HomeScreen() {
+
+export default function Home() {
+  const [currentEmail, setCurrentEmail] = useState(mockUsers[0].email);
+  const { user, setUser } = useUser();
+
+  useEffect(() => {
+    async function loadUser() {
+      const { data, error } = await supabase
+        .from("attendeeProfile")
+        .select("id, email, firstName, lastName, linkedin, instagram, school, major, interests, profilePictureUrl")
+        .eq("email", currentEmail)
+        .single();
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      setUser({
+        id: data.id,
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        linkedin: data.linkedin,
+        instagram: data.instagram,
+        school: data.school,
+        major: data.major, 
+        interests: data.interests,
+        profilePictureUrl: data.profilePictureUrl,
+      });
+    }
+
+    loadUser();
+  }, [currentEmail]);
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <ScrollView contentContainerStyle={{padding:24}}>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <Text style={[theme.typography.biggestTitle, {color: theme.colors.primaryBlue, textAlign: "center", marginBottom: 16}]}>
+        Welcome, {user?.firstName || ""}!
+      </Text>
+
+      <Text style = {[theme.typography.sectionTitle, {color: theme.colors.primaryDarkGray, textAlign: "center", marginBottom: 16}]}>
+        52nd International Conference
+      </Text>
+
+      <Text style = {[theme.typography.body, {color: theme.colors.primaryDarkGray, textAlign: "center", marginBottom: 20}]}>
+        We're excited to have you here! Use the navigation below to see your schedule, speakers, and more. 
+      </Text>
+
+      <Text style = {[theme.typography.title, {color: theme.colors.primaryBlue, textAlign: "center", marginBottom: 16}]}>
+        Upcoming events
+      </Text>
+
+      <Card>
+        <Text style = {[theme.typography.sectionTitle, {color: theme.colors.primaryDarkGray, marginBottom: 8}]}>
+          Keynote #1: Brian Zhou
+        </Text>
+        <Text style={theme.typography.body}>
+          10:00 AM・Main Hall
+        </Text>
+      </Card>
+
+      <Card marginBottom={16}>
+        <Text style = {[theme.typography.sectionTitle, {color: theme.colors.primaryDarkGray, marginBottom: 8}]}>
+          Executive Seminar #1: Allen Li
+        </Text>
+        <Text style={theme.typography.body}>
+          11:00 AM・Conference Room A
+        </Text>
+      </Card>
+
+      <Text style = {[theme.typography.title, {color: theme.colors.primaryBlue, textAlign: "center", marginBottom: 8}]}>
+        Quick Access
+      </Text>
+
+      <Button title="Scan QR Code" variant="secondary"/>
+      <Button title="Speakers" variant="secondary" />
+      <Button title="My Network" variant="secondary" />
+
+      <Text style = {[theme.typography.body, {color: theme.colors.primaryDarkGray, textAlign: "center", marginTop: 20}]}>
+        Questions about the app? Reach out to any BT staff member!
+      </Text> 
+
+    </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
