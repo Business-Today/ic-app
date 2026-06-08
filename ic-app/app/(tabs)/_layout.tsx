@@ -1,7 +1,10 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useUser } from "../../contexts/UserContext"
 
 export default function TabLayout() {
+  const { user } = useUser();
+  const isPrinceton = user?.email?.endsWith("@princeton.edu");
   return (
     <Tabs>
       <Tabs.Screen
@@ -53,6 +56,13 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+      name="attendance"
+      options={{
+        title: "Attendance",
+        href: isPrinceton ? undefined : null,
+      }}
+    />
     </Tabs>
   );
 }

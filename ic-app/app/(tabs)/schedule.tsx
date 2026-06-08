@@ -6,6 +6,7 @@ import Button from "../../components/Button";
 import { useUser } from "../../contexts/UserContext";
 import { useEffect } from "react";
 import { supabase } from "../../lib/supabase";
+import { useLocalSearchParams } from "expo-router";
 
 export default function Schedule() {
   const [selectedDay, setSelectedDay] = useState("day1");
@@ -15,8 +16,23 @@ export default function Schedule() {
   const [speakersAll, setSpeakersAll] = useState<Speaker[]>([]);
   const [loading, setLoading] = useState(true);
   const [seminarSpeakers, setSeminarSpeakers] = useState<Speaker[]>([]);
-  const [schedule, setSchedule] = useState<FullSchedule[]>([]);
+  const { schedule, setSchedule } = useUser();
+  const params = useLocalSearchParams();
 
+
+  useEffect(() => {
+    if (params.mode === "speakers") {
+      setMode("speakers");
+    }
+  }, [params.mode]);
+
+  function formatTime(timestamp: string) {
+    return new Date(timestamp).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
 
   type PersonalSchedule = {
     groupNumber: number;
@@ -299,7 +315,7 @@ return (
                 { color: theme.colors.primaryDarkGray },
               ]}
             >
-              {item.startTime} - {item.endTime} · {item.location}
+              {formatTime(item.startTime)} - {formatTime(item.endTime)} · {item.location}
             </Text>
           </Card>
         )}

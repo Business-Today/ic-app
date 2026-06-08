@@ -2,11 +2,10 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 import { UserProvider } from "../contexts/UserContext";
-
+import Toast from "react-native-toast-message";
 
 export default function RootLayout() {
   return (
-    <>
     <UserProvider>
       <Stack
         screenOptions={{
@@ -15,7 +14,17 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: "#FFFFFF" },
         }}
       >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+        <Stack.Screen
+          name="login"
+          options={{ headerShown: false }}
+        />
+
+        <Stack.Screen
+          name="(tabs)"
+          options={{ headerShown: false }}
+        />
+
         <Stack.Screen
           name="modal"
           options={{
@@ -26,7 +35,7 @@ export default function RootLayout() {
       </Stack>
 
       <StatusBar style="dark" />
-      </UserProvider>
-    </>
+      <Toast />
+    </UserProvider>
   );
 }

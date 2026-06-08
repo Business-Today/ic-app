@@ -3,9 +3,12 @@ import Card from "../../components/Card";
 import Button from "../../components/Button";
 import SectionTitle from "../../components/SectionTitle";
 import theme from "../../theme";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../lib/supabase";
 import { useUser } from "../../contexts/UserContext";
+import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 
 const mockUsers = [
   {
@@ -24,8 +27,60 @@ const mockUsers = [
 
 
 export default function Home() {
-  const [currentEmail, setCurrentEmail] = useState(mockUsers[0].email);
+  const [currentEmail, setCurrentEmail] = useState(mockUsers[1].email);
   const { user, setUser } = useUser();
+  const { schedule } = useUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    async function checkLogin() {
+      const savedEmail =
+        await AsyncStorage.getItem("loggedInEmail");
+
+      if (!savedEmail) {
+        router.replace("/login");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("attendeeProfile")
+        .select("*")
+        .eq("email", savedEmail)
+        .single();
+
+      if (error || !data) {
+        router.replace("/login");
+        return;
+      }
+
+      setUser(data);
+
+      router.replace("/(tabs)");
+    }
+
+    checkLogin();
+  }, [])
+
+  const upcomingEvents = useMemo(() => {
+    const now = new Date();
+
+    return schedule
+      .filter((event) => new Date(event.startTime) > now)
+      .sort(
+        (a, b) =>
+          new Date(a.startTime).getTime() -
+          new Date(b.startTime).getTime()
+      )
+      .slice(0, 2);
+  }, [schedule]);
+
+  function formatTime(timestamp: string) {
+    return new Date(timestamp).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
 
   useEffect(() => {
     async function loadUser() {
@@ -75,31 +130,73 @@ export default function Home() {
         Upcoming events
       </Text>
 
-      <Card>
-        <Text style = {[theme.typography.sectionTitle, {color: theme.colors.primaryDarkGray, marginBottom: 8}]}>
-          Keynote #1: Brian Zhou
-        </Text>
-        <Text style={theme.typography.body}>
-          10:00 AM・Main Hall
-        </Text>
-      </Card>
+      {upcomingEvents.map((event, index) => (
+        <Card
+          key={event.id}
+          marginBottom={index === upcomingEvents.length - 1 ? 16 : 8}
+        >
+          <Text
+            style={[
+              theme.typography.sectionTitle,
+              {
+                color: theme.colors.primaryDarkGray,
+                marginBottom: 8,
+              },
+            ]}
+          >
+            {event.title}
+          </Text>
 
-      <Card marginBottom={16}>
-        <Text style = {[theme.typography.sectionTitle, {color: theme.colors.primaryDarkGray, marginBottom: 8}]}>
-          Executive Seminar #1: Allen Li
-        </Text>
-        <Text style={theme.typography.body}>
-          11:00 AM・Conference Room A
-        </Text>
-      </Card>
+          {event.idSpeaker ? (
+            <Text
+              style={[
+                theme.typography.body,
+                {
+                  color: theme.colors.primaryDarkGray,
+                  marginBottom: 4,
+                },
+              ]}
+            >
+              {event.idSpeaker}
+            </Text>
+          ) : null}
 
+          <Text style={theme.typography.body}>
+            {formatTime(event.startTime)} ・ {event.location}
+          </Text>
+        </Card>
+      ))}
+      {upcomingEvents.length === 0 && (
+        <Card marginBottom={16}>
+          <Text style={theme.typography.body}>
+            No upcoming events.
+          </Text>
+        </Card>
+      )}
       <Text style = {[theme.typography.title, {color: theme.colors.primaryBlue, textAlign: "center", marginBottom: 8}]}>
         Quick Access
       </Text>
 
-      <Button title="Scan QR Code" variant="secondary"/>
-      <Button title="Speakers" variant="secondary" />
-      <Button title="My Network" variant="secondary" />
+      <Button
+        title="Scan QR Code"
+        variant="secondary"
+        onPress={() => router.push("/qr")}
+      />
+      <Button
+        title="Speakers"
+        variant="secondary"
+        onPress={() =>
+          router.push({
+            pathname: "/schedule",
+            params: { mode: "speakers" },
+          })
+        }
+      />
+      <Button
+        title="Edit Profile"
+        variant="secondary"
+        onPress={() => router.push("/profile")}
+      />
 
       <Text style = {[theme.typography.body, {color: theme.colors.primaryDarkGray, textAlign: "center", marginTop: 20}]}>
         Questions about the app? Reach out to any BT staff member!

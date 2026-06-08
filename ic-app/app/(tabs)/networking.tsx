@@ -3,34 +3,79 @@ import Card from "../../components/Card";
 import theme from "../../theme";
 import { useRouter } from "expo-router";
 import { Pressable } from "react-native";
+import { useState, useEffect } from "react";
+import { useUser } from "@/contexts/UserContext";
+import { supabase } from "@/lib/supabase";
+import Button from "@/components/Button";
+import { Linking, Alert } from "react-native";
 
-const people = [
-  {
-    id: "1",
-    firstName: "Sophie",
-    lastName: "Kim",
-    school: "Princeton University",
-    major: "SPIA",
-    linkedin: "https://www.linkedin.com/in/sk0546/",
-    instagram: "https://www.instagram.com/sophiekimsy/",
-  },
-  {
-    id: "2",
-    firstName: "Susan",
-    lastName: "Chen",
-    school: "Princeton University",
-    major: "Economics",
-    linkedin: "https://www.linkedin.com/in/susan-chen-839054311/",
-    instagram: "https://www.instagram.com/susannchnn/",
-  },
-];
+
+
+type NetworkProfile = {
+  email: string;
+  firstName: string;
+  lastName: string;
+  school: string;
+  major: string;
+  interests: string;
+  linkedin: string;
+  instagram: string;
+};
+
 
 export default function Networking() {
   const router = useRouter();
+  const [networkProfiles, setNetworkProfiles] = useState<NetworkProfile[]>([]);
+  const { user } = useUser();
+
+  useEffect(() => {
+    if (!user?.email) return;
+
+    async function loadNetwork() {
+      if (!user?.email) return;
+      const { data: me, error } = await supabase
+        .from("attendeeProfile")
+        .select("network")
+        .eq("email", user.email)
+        .single();
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      const emails =
+        (me?.network ?? "")
+          .split(",")
+          .map((email) => email.trim())
+          .filter(Boolean);
+
+      if (emails.length === 0) {
+        setNetworkProfiles([]);
+        return;
+      }
+
+      const { data: profiles, error: profileError } =
+        await supabase
+          .from("attendeeProfile")
+          .select("*")
+          .in("email", emails);
+
+      if (profileError) {
+        console.error(profileError);
+        return;
+      }
+
+      setNetworkProfiles(profiles ?? []);
+    }
+
+    loadNetwork();
+  }, [user]);
+
   return (
     <FlatList
-      data={people}
-      keyExtractor={(item) => item.id}
+      data={networkProfiles}
+      keyExtractor={(item) => item.email}
       contentContainerStyle={{ padding: 16 }}
       ListHeaderComponent={
         <Text
@@ -47,29 +92,36 @@ export default function Networking() {
         </Text>
       }
       renderItem={({ item }) => (
-        <Pressable
-          onPress={() => router.push(`/profile/${item.id}`)}
-        >
         <Card>
-          <Text
-            style={[
-              theme.typography.sectionTitle,
-              { color: theme.colors.primaryBlue, marginBottom: 8 },
-            ]}
-          >
+          <Text style={[theme.typography.title, { color: theme.colors.primaryBlue, marginBottom: 8 }]}>
             {item.firstName} {item.lastName}
           </Text>
-
-          <Text
-            style={[
-              theme.typography.body,
-              { color: theme.colors.primaryDarkGray, marginBottom: 8 },
-            ]}
-          >
-            {item.school}, {item.major}
+          <Text style={[theme.typography.sectionTitle, { color: theme.colors.primaryDarkGray, marginBottom: 8 }]}>
+            {item.school}
           </Text>
+          <Text style={[theme.typography.body, { color: theme.colors.primaryDarkGray, marginBottom: 8 }]}>
+            {item.major}
+          </Text>
+          <Text style={[theme.typography.body, { color: theme.colors.primaryDarkGray, marginBottom: 8 }]}>
+            Interests: {item.interests}
+          </Text>
+          <Button
+                  title={item.linkedin ? "LinkedIn" : "Add LinkedIn"}
+                  onPress={() => {
+                    if (item.linkedin) {
+                      Linking.openURL(item.linkedin);
+                    }
+                  }}
+                />
+          <Button
+                  title={item.instagram ? "Instagram" : "Add Instagram"}
+                  onPress={() => {
+                    if (item.instagram) {
+                      Linking.openURL(item.instagram);
+                    }
+                  }}
+                />
         </Card>
-        </Pressable>
       )}
     />
   );

@@ -13,9 +13,22 @@ type User = {
   profilePictureUrl: string;
 };
 
+type ScheduleEvent = {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  location: string;
+  day: string;
+  type: string;
+  idSpeaker: string;
+};
+
 type UserContextType = {
   user: User | null;
   setUser: (user: User | null) => void;
+  schedule: ScheduleEvent[] | null;
+  setSchedule: (schedule: ScheduleEvent[]) => void;
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -26,9 +39,9 @@ export function UserProvider({
   children: React.ReactNode;
 }) {
   const [user, setUser] = useState<User | null>(null);
-
+  const [schedule, setSchedule] = useState<ScheduleEvent[]>([]);
   return (
-    <UserContext.Provider value={{ user, setUser }}>
+    <UserContext.Provider value={{ user, setUser, schedule, setSchedule }}>
       {children}
     </UserContext.Provider>
   );
