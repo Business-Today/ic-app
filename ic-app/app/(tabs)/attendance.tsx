@@ -24,6 +24,7 @@ const navigation = useNavigation();
 const router = useRouter();
 
 
+
  type Schedule = {
     event: string;
     startTime: string;
@@ -77,6 +78,32 @@ const router = useRouter();
         (event) => event.day === selectedDay
     );
     }, [schedule, selectedDay]);
+
+    const uniqueEventsForDay = eventsForDay.filter(
+        (event, index, self) => {
+            const isExecSem = 
+            event.event.startsWith("Panel") || event.event.startsWith("Recruitment");
+            if (isExecSem){
+                return index === self.findIndex((e) => e.event === event.event);
+            }
+            return true;
+        }
+    )
+    const selectedEventObj = uniqueEventsForDay.find((event) => event.id === selectedEvent);
+    const eventName = selectedEventObj ? selectedEventObj.event : "";
+    const eventSpeaker = selectedEventObj ? `${selectedEventObj.firstName} ${selectedEventObj.lastName}` : "";
+
+    const eventMap = schedule.reduce((acc, event) => {
+      acc[event.id] = {
+        eventID: event.id,
+        eventName: event.event,
+        speaker: `${event.firstName} ${event.lastName}`,
+      };
+      return acc;
+    }, {} as Record<string, { eventID: string; eventName: string; speaker: string }>);
+
+    console.log(eventMap);
+
     if (showScanner) {
     return (
         <View style={{ flex: 1 }}>
@@ -156,7 +183,7 @@ const router = useRouter();
     </View>
   )};
   return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", marginBottom: 16, paddingHorizontal: 16}}>
       <Text
           style={[
             theme.typography.biggestTitle,
@@ -185,8 +212,9 @@ const router = useRouter();
             }}
             value={selectedEvent}
             onValueChange={setSelectedEvent}
-            items={eventsForDay.map((event) => ({
-                label: `${event.event}, ${event.firstName} ${event.lastName}`,
+            items={uniqueEventsForDay.map((event) => ({
+                label: event.event.startsWith("Panel") || event.event.startsWith("Recruitment") ? event.event
+                :`${event.event}, ${event.firstName} ${event.lastName}`,
                 value: event.id,
             }))}
             useNativeAndroidPickerStyle={false} 
@@ -198,9 +226,11 @@ const router = useRouter();
             borderWidth: 1,
             borderColor: '#ccc',
             borderRadius: 4,
-            color: 'black',
+            color: theme.colors.primaryDarkGray,
             paddingRight: 30, // leaves room for a dropdown icon if needed
             width: '100%',
+            marginTop: 16, 
+            marginBottom: 16,
             },
             inputAndroid: {
             fontSize: 16,
@@ -209,9 +239,11 @@ const router = useRouter();
             borderWidth: 1,
             borderColor: '#ccc',
             borderRadius: 4,
-            color: 'black',
+            color: theme.colors.primaryDarkGray,
             paddingRight: 30, 
             width: '100%',
+            marginTop: 16, 
+            marginBottom: 16,
             },
             inputIOSContainer: {
             zIndex: 100, 
@@ -219,6 +251,7 @@ const router = useRouter();
             inputAndroidContainer: {
             width: '100%',
             }
+            
         }}
             />
         <Button title="Open camera to scan QR code" variant="secondary"
@@ -230,6 +263,21 @@ const router = useRouter();
             setScanned(false);
             setShowScanner(true);
         }} />
+        <Button title="See attendance records for this event" variant="secondary" onPress={() => {
+        if (!selectedEvent) return;
+        router.push({
+        pathname: "/attendanceRecords",
+        params: { eventID: selectedEvent, eventName: eventName, eventSpeaker: eventSpeaker },
+        });
+    }}
+    />
+    <Button title="Search attendee check-ins" variant="secondary" onPress={() => {
+        router.push({
+            pathname: "/attendeeAttendance",
+            params: { schedule: JSON.stringify(eventMap) },
+        })
+    }}
+    />
     </View>
 
   );
