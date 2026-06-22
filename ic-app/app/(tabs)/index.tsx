@@ -10,27 +10,14 @@ import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
-const mockUsers = [
-  {
-    email: "my9689@princeton.edu",
-    name: "Miyu Yamane",
-  },
-  {
-    email: "sk0546@princeton.edu",
-    name: "Sophie Kim",
-  },
-  {
-    email: "sc5819@princeton.edu",
-    name: "Susan Chen",
-  }
-];
-
 
 export default function Home() {
-  const [currentEmail, setCurrentEmail] = useState(mockUsers[1].email);
   const { user, setUser } = useUser();
   const { schedule } = useUser();
   const router = useRouter();
+  const {scheduleWithNames} = useUser();
+
+  console.log(scheduleWithNames)
 
   useEffect(() => {
     async function checkLogin() {
@@ -60,11 +47,14 @@ export default function Home() {
 
     checkLogin();
   }, [])
-
+  const getCurrentDate = () => {
+    return new Date();
+  };
   const upcomingEvents = useMemo(() => {
-    const now = new Date();
+    const now = new Date('2026-11-07T07:00:00')
+    // const now = getCurrentDate();
 
-    return schedule
+    return scheduleWithNames
       .filter((event) => new Date(event.startTime) > now)
       .sort(
         (a, b) =>
@@ -86,8 +76,8 @@ export default function Home() {
     async function loadUser() {
       const { data, error } = await supabase
         .from("attendeeProfile")
-        .select("id, email, firstName, lastName, linkedin, instagram, school, major, interests, profilePictureUrl")
-        .eq("email", currentEmail)
+        .select("email, firstName, lastName, linkedin, instagram, school, major, interests, profilePictureUrl")
+        .eq("email", user?.email)
         .single();
 
       if (error) {
@@ -96,7 +86,6 @@ export default function Home() {
       }
 
       setUser({
-        id: data.id,
         email: data.email,
         firstName: data.firstName,
         lastName: data.lastName,
@@ -110,7 +99,7 @@ export default function Home() {
     }
 
     loadUser();
-  }, [currentEmail]);
+  }, []);
   return (
     <ScrollView contentContainerStyle={{padding:24}}>
 

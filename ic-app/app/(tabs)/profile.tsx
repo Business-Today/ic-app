@@ -11,6 +11,8 @@ import * as ImagePicker from "expo-image-picker";
 export default function Profile() {
   const [mode, setMode] = useState<"edit" | "view">("view");
   const {user, setUser} = useUser();
+  const [firstName, setFirstName] = useState(`${user?.firstName ?? ""}`);
+  const [lastName, setLastName] = useState(`${user?.lastName ?? ""}`);
   const [school, setSchool] = useState(user?.school ?? "");
   const [major, setMajor] = useState(user?.major ?? "");
   const [interests, setInterests] = useState(user?.interests ?? "");
@@ -175,9 +177,6 @@ export default function Profile() {
       }}
     />    
       <Card>
-      <Text style={[ theme.typography.title, {color: theme.colors.primaryBlue, marginBottom: 8}]}>
-        {user?.firstName} {user?.lastName}
-      </Text>
 
       {/* {mode === "edit" ? (
         <View style={{ alignItems: "center" }}>
@@ -226,6 +225,36 @@ export default function Profile() {
           }}
         />
       )} */}
+      {mode === "edit" ? (
+        <>
+        <TextInput
+          value={firstName}
+          onChangeText={setFirstName}
+          placeholder="First Name"
+          placeholderTextColor="#999"
+          style={{
+            borderWidth: 1,
+            padding: 8,
+            marginBottom: 8,
+          }}
+        />
+        <TextInput
+          value={lastName}
+          onChangeText={setLastName}
+          placeholder="Last Name"
+          placeholderTextColor="#999"
+          style={{
+            borderWidth: 1,
+            padding: 8,
+            marginBottom: 8,
+          }}
+        />
+      </>
+      ) : (
+        <Text style={[ theme.typography.title, {color: theme.colors.primaryBlue, marginBottom: 8}]}>
+        {firstName} {lastName}
+      </Text>
+      )}
       {mode === "edit" ? (
           <>
             <TextInput
@@ -335,6 +364,9 @@ export default function Profile() {
         onPress={() => {
           if (instagram) {
             Linking.openURL(instagram);
+          }
+          else{
+            setMode("edit");
           }
         }}
       />

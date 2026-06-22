@@ -13,11 +13,13 @@ export default function Schedule() {
   const [mode, setMode] = useState<"schedule" | "speakers">("schedule");
   const { user } = useUser();
   const [personalSchedules, setSchedules] = useState<PersonalSchedule | null>(null);
-  const [speakersAll, setSpeakersAll] = useState<Speaker[]>([]);
+  const {speakersAll, setSpeakersAll} = useUser();
   const [loading, setLoading] = useState(true);
   const [seminarSpeakers, setSeminarSpeakers] = useState<Speaker[]>([]);
   const { schedule, setSchedule } = useUser();
   const params = useLocalSearchParams();
+  const [scheduleKeynote, setScheduleKeynote] = useState<Speaker[]>([]);
+
 
 
   useEffect(() => {
@@ -66,12 +68,12 @@ export default function Schedule() {
 
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.email) return;
 
     async function loadSchedule() {
       if (!user?.email) return;
       const { data, error } = await supabase
-        .from("personalSchedule")
+        .from("attendeeProfile")
         .select("groupNumber, offsite, exec1, exec2, exec3, exec4")
         .eq("email", user.email)
         .single();
@@ -163,16 +165,22 @@ export default function Schedule() {
         console.error(error);
         return;
       }
-
-      setSpeakersAll(data);
+      setScheduleKeynote(data ?? []); 
     }
 
     loadSpeakersAll()
   }, []);
 
   const speakers = useMemo(() => {
-    return [...seminarSpeakers, ...speakersAll];
-  }, [seminarSpeakers, speakersAll]);
+    return [...seminarSpeakers, ...scheduleKeynote];
+  }, [seminarSpeakers, scheduleKeynote]);
+  useEffect(() => {
+    if (!seminarSpeakers.length || !scheduleKeynote.length) return;
+
+    const combinedSpeakers = [...seminarSpeakers, ...scheduleKeynote];
+    setSpeakersAll(combinedSpeakers); 
+  }, [seminarSpeakers, scheduleKeynote]);
+
 
   const speakerMap = new Map(
     speakers.map((speaker) => [speaker.id, speaker])
@@ -192,11 +200,11 @@ export default function Schedule() {
     return {
       ...event,
       idSpeaker: speakerNames,
-    };
+    };   
   });
+
 return (
   <View style={{ flex: 1 }}>
-    {/* HEADER */}
     <View style={{ padding: 16, gap: 12 }}>
       <Text
         style={[
