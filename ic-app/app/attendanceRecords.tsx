@@ -54,6 +54,15 @@ export default function AttendanceRecords() {
       {eventSpeaker}
     </Text>
 
+    <Text 
+      style={[
+        theme.typography.sectionTitle,
+        { color: theme.colors.primaryDarkBlue, marginBottom: 8 }
+      ]}
+    >
+      Number of attendees checked in: {attendees.length}
+    </Text>
+
     <TextInput
       placeholder="Search attendees..."
       value={searchText}

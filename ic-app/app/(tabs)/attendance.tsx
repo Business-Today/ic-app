@@ -40,6 +40,120 @@ const router = useRouter();
     lastName: string;
     numberAttendees: number;
   }
+
+  const handleBarcodeScanned = async ({ data }: { data: string }) => {
+    if (scanned) return;
+    if (!selectedEvent) {
+        Toast.show({
+            type: "error",
+            text1: "Event not selected",
+            position: "bottom",
+            visibilityTime: 2000,
+        });
+        setShowScanner(false);
+    }
+    try {
+        if (isScanning.current) {
+        return;
+        }
+        isScanning.current = true;
+        setProcessingScan(true);
+        setScannedEmail(data);
+        const {data: attendee} = await supabase
+        .from("attendeeProfile")
+        .select("firstName, lastName")
+        .eq("email", data)
+        .single();
+        if (!attendee) return;
+      console.log("Processing scan for attendee:", attendee.firstName, attendee.lastName);
+
+        const { data: existingRecord, error: checkError } = await supabase
+        .from("attendanceByAttendee")
+        .select(selectedEvent)
+        .eq("email", data)
+        .single();
+        if (existingRecord && existingRecord[selectedEvent] === "True") {
+            // Attendee has already scanned for this event
+            setProcessingScan(false);
+            return;
+        }
+        isScanning.current = false; 
+        console.log("Email scanned:", data);
+        const { error: updateError } = await supabase
+        .from("attendanceByAttendee")
+        .update({ [selectedEvent]: "True" })
+        .eq("email", data);
+
+        if (updateError || !data) {
+            console.log(updateError);
+            setProcessingScan(false);
+            return;
+        }
+        const { data: me, error: fetchError } = await supabase
+            .from("attendanceByEvent")
+            .select("emails")
+            .eq("eventID", selectedEvent)
+            .single();
+        const currentEmails = typeof me?.emails === "string" ? me.emails : "";
+
+        const updatedEmails =
+        currentEmails.trim() === ""
+            ? data
+            : `${currentEmails},${data}`;
+        const { error: newerror } = await supabase
+                .from("attendanceByEvent")
+                .update({ emails: updatedEmails })
+                .eq("eventID", selectedEvent);
+
+                if (newerror) {
+                console.log(newerror);
+                }
+        const {data: numberAttendees, error: numberError} = await supabase
+        .from("attendanceByEvent")
+        .select("numberAttendees")
+        .eq("eventID", selectedEvent)
+        .single();
+
+        const currentNumber = typeof numberAttendees?.numberAttendees === "number" ? numberAttendees.numberAttendees : 0;
+        const updatedNumber = currentNumber + 1;
+        setScheduleAll((prev) =>
+          prev.map((event) =>
+            event.id === selectedEvent
+              ? { ...event, numberAttendees: updatedNumber }
+              : event
+          )
+        );
+        setScheduleSem((prev) =>
+          prev.map((event) =>
+            event.id === selectedEvent
+              ? { ...event, numberAttendees: updatedNumber }
+              : event
+          )
+        );
+
+        const { error: numberUpdateError } = await supabase
+        .from("attendanceByEvent")
+        .update({ numberAttendees: updatedNumber })
+        .eq("eventID", selectedEvent);
+        
+        if (numberUpdateError) {
+            console.log(numberUpdateError);
+        }
+
+        Toast.show({
+        type: "success",
+        text1: `${attendee.firstName} ${attendee.lastName} checked in`,
+        position: "bottom",
+        visibilityTime: 1000,
+        });
+      } finally{
+        setTimeout(() => {
+          isScanning.current = false;
+          setScanned(false);
+        }, 500)
+  }
+}
+
   useEffect(() => {
     async function loadCount() {
       if (!selectedEvent) {
@@ -137,119 +251,7 @@ const router = useRouter();
         <CameraView
         style={{ flex: 1 }}
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-        onBarcodeScanned={async ({ data }) => {
-            if (processingScan) return;
-            if (scanned) return;
-            if (!selectedEvent) {
-                 Toast.show({
-                    type: "error",
-                    text1: "Event not selected",
-                    position: "bottom",
-                    visibilityTime: 2000,
-                });
-                setShowScanner(false);
-            }
-            if (isScanning.current) {
-            return;
-            }
-            isScanning.current = true;
-            setProcessingScan(true);
-            setScannedEmail(data);
-            const {data: attendee} = await supabase
-            .from("attendeeProfile")
-            .select("firstName, lastName")
-            .eq("email", data)
-            .single();
-            if (!attendee) return;
-
-            const { data: existingRecord, error: checkError } = await supabase
-            .from("attendanceByAttendee")
-            .select(selectedEvent)
-            .eq("email", data)
-            .single();
-
-            if (existingRecord) {
-                // Attendee has already scanned for this event
-                setProcessingScan(false);
-                return;
-            }
-
-            const { error: updateError } = await supabase
-            .from("attendanceByAttendee")
-            .update({ [selectedEvent]: "True" })
-            .eq("email", data);
-
-            if (updateError || !data) {
-                console.log(updateError);
-            setProcessingScan(false);
-            return;
-            }
-            const { data: me, error: fetchError } = await supabase
-                .from("attendanceByEvent")
-                .select("emails")
-                .eq("eventID", selectedEvent)
-                .single();
-            const currentEmails = typeof me?.emails === "string" ? me.emails : "";
-
-            const updatedEmails =
-            currentEmails.trim() === ""
-                ? data
-                : `${currentEmails},${data}`;
-            const { error: newerror } = await supabase
-                    .from("attendanceByEvent")
-                    .update({ emails: updatedEmails })
-                    .eq("eventID", selectedEvent);
-
-                    if (newerror) {
-                    console.log(newerror);
-                    }
-            const {data: numberAttendees, error: numberError} = await supabase
-            .from("attendanceByEvent")
-            .select("numberAttendees")
-            .eq("eventID", selectedEvent)
-            .single();
-
-            const currentNumber = typeof numberAttendees?.numberAttendees === "number" ? numberAttendees.numberAttendees : 0;
-
-            const updatedNumber = currentNumber + 1;
-            setScheduleAll((prev) =>
-              prev.map((event) =>
-                event.id === selectedEvent
-                  ? { ...event, numberAttendees: updatedNumber }
-                  : event
-              )
-            );
-            setAttendeeCount((prev) => prev + 1);
-
-            setScheduleSem((prev) =>
-              prev.map((event) =>
-                event.id === selectedEvent
-                  ? { ...event, numberAttendees: updatedNumber }
-                  : event
-              )
-            );
-
-            const { error: numberUpdateError } = await supabase
-            .from("attendanceByEvent")
-            .update({ numberAttendees: updatedNumber })
-            .eq("eventID", selectedEvent);
-            
-            if (numberUpdateError) {
-                console.log(numberUpdateError);
-            }
-
-            Toast.show({
-            type: "success",
-            text1: `${attendee.firstName} ${attendee.lastName} checked in`,
-            position: "bottom",
-            visibilityTime: 1000,
-            });
-                    setProcessingScan(false);
-            
-                    setTimeout(() => {
-          isScanning.current = false;
-        }, 1000);
-                }}
+        onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
     />
     </View>
   )};
@@ -325,16 +327,7 @@ const router = useRouter();
             
         }}
             />
-        <Text style={[
-            theme.typography.title,
-            {
-              color: theme.colors.primaryDarkGray, 
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}>
-            Number of attendees: {attendeeCount}
-        </Text>
+
         <Button title="Open camera to scan QR code" variant="secondary"
             onPress={async () => {
             if (!cameraPermission?.granted) {
