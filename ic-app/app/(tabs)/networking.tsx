@@ -28,7 +28,6 @@ export default function Networking() {
   const [networkProfiles, setNetworkProfiles] = useState<NetworkProfile[]>([]);
   const { user } = useUser();
 
-  useEffect(() => {
     if (!user?.email) return;
 
     async function loadNetwork() {
@@ -70,7 +69,6 @@ export default function Networking() {
     }
 
     loadNetwork();
-  }, [user]);
 
   return (
     <FlatList
@@ -106,7 +104,7 @@ export default function Networking() {
             Interests: {item.interests}
           </Text>
           <Button
-                  title={item.linkedin ? "LinkedIn" : "Add LinkedIn"}
+                  title={item.linkedin ? "LinkedIn" : "LinkedIn"}
                   onPress={() => {
                     if (item.linkedin) {
                       Linking.openURL(item.linkedin);
@@ -114,7 +112,7 @@ export default function Networking() {
                   }}
                 />
           <Button
-                  title={item.instagram ? "Instagram" : "Add Instagram"}
+                  title={item.instagram ? "Instagram" : "Instagram"}
                   onPress={() => {
                     if (item.instagram) {
                       Linking.openURL(item.instagram);

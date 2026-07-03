@@ -14,6 +14,102 @@ export default function QR() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [processingScan, setProcessingScan] = useState(false);
   const isScanning = useRef(false);
+  const [scanned, setScanned] = useState(false);
+  const scanningRef = useRef(false);
+
+  const handleBarcodeScanned = async ({ data }: { data: string }) => {
+    if (isScanning.current) return;
+    if (scanned) return;
+    isScanning.current = true;
+    setScanned(true);
+
+            const { data: attendee, error } = await supabase
+              .from("attendeeProfile")
+              .select("firstName, lastName, email")
+              .eq("email", data)
+              .single();
+
+            if (error || !attendee) {
+              Alert.alert("QR Code Error", "No profile found for this QR code.", [
+                {
+                    text: "OK",
+                    onPress: () => {
+                      setScanned(false);
+                      isScanning.current = false;
+                    },
+                  },
+                ]);
+                setProcessingScan(false);
+                return;
+            }
+
+            Alert.alert(
+              "Profile Found",
+              `Add ${attendee.firstName} ${attendee.lastName} to your network?`,
+              [
+                {
+                  text: "Cancel",
+                  style: "cancel",
+                  onPress: () => {
+                    setProcessingScan(false);
+                    isScanning.current = false;
+                  },
+                },
+                {
+                  text: "Add Profile",
+                  onPress: async () => {
+                    if (!user?.email) {
+                      Alert.alert("Error", "User email not found.");
+                      setProcessingScan(false);
+                      isScanning.current = false;
+                      return;
+                    }
+
+                    const { data: me, error: fetchError } = await supabase
+                      .from("attendeeProfile")
+                      .select("network")
+                      .eq("email", user.email)
+                      .single();
+
+                    if (fetchError) {
+                      console.log(fetchError);
+                      Alert.alert("Error", "Failed to fetch your network.");
+                      setProcessingScan(false);
+                      isScanning.current = false;
+                      return;
+                    }
+
+                    const currentConnections =
+                      typeof me?.network === "string" ? me.network : "";
+
+                    const emailToAdd = attendee.email;
+
+                    const updatedConnections =
+                      currentConnections.trim() === ""
+                        ? emailToAdd
+                        : `${currentConnections},${emailToAdd}`;
+
+                    const { error: updateError } = await supabase
+                      .from("attendeeProfile")
+                      .update({ network: updatedConnections })
+                      .eq("email", user.email);
+
+                    if (updateError) {
+                      console.log(updateError);
+                      Alert.alert("Error", "Failed to add profile to network.");
+                    } else {
+                      Alert.alert("Success", `${attendee.firstName} added to your network!`);
+                    }
+                    setScanned(false);
+                    isScanning.current = false;
+
+                    setProcessingScan(false);
+                  },
+                },
+              ],
+              { cancelable: false }
+            );
+          };
 
   // Handle permission loading state
   if (!cameraPermission) {
@@ -54,94 +150,7 @@ export default function QR() {
         <CameraView
           style={{ flex: 1 }}
           barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-          onBarcodeScanned={async ({ data }) => {
-            if (processingScan) return;
-            if (isScanning.current) return;
-
-            isScanning.current = true;
-            setProcessingScan(true);
-
-            // Prevent double scans with a short lock
-            setTimeout(() => {
-              isScanning.current = false;
-            }, 500);
-
-            const { data: attendee, error } = await supabase
-              .from("attendeeProfile")
-              .select("firstName, lastName, email")
-              .eq("email", data)
-              .single();
-
-            if (error || !attendee) {
-              Alert.alert("QR Code Error", "No profile found for this QR code.");
-              setProcessingScan(false);
-              return;
-            }
-
-            Alert.alert(
-              "Profile Found",
-              `Add ${attendee.firstName} ${attendee.lastName} to your network?`,
-              [
-                {
-                  text: "Cancel",
-                  style: "cancel",
-                  onPress: () => {
-                    setProcessingScan(false);
-                  },
-                },
-                {
-                  text: "Add Profile",
-                  onPress: async () => {
-                    if (!user?.email) {
-                      Alert.alert("Error", "User email not found.");
-                      setProcessingScan(false);
-                      return;
-                    }
-
-                    const { data: me, error: fetchError } = await supabase
-                      .from("attendeeProfile")
-                      .select("network")
-                      .eq("email", user.email)
-                      .single();
-
-                    if (fetchError) {
-                      console.log(fetchError);
-                      Alert.alert("Error", "Failed to fetch your network.");
-                      setProcessingScan(false);
-                      return;
-                    }
-
-                    const currentConnections =
-                      typeof me?.network === "string" ? me.network : "";
-
-                    const emailToAdd = attendee.email;
-
-                    const updatedConnections =
-                      currentConnections.trim() === ""
-                        ? emailToAdd
-                        : `${currentConnections},${emailToAdd}`;
-
-                    const { error: updateError } = await supabase
-                      .from("attendeeProfile")
-                      .update({ network: updatedConnections })
-                      .eq("email", user.email);
-
-                    if (updateError) {
-                      console.log(updateError);
-                      Alert.alert("Error", "Failed to add profile to network.");
-                    } else {
-                      Alert.alert("Success", `${attendee.firstName} added to your network!`);
-                    }
-
-                    setProcessingScan(false);
-                  },
-                },
-              ],
-              { cancelable: false }
-            );
-
-            setProcessingScan(false);
-          }}
+          onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
         />
         <View
           style={{

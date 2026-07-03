@@ -20,8 +20,10 @@ const [scannedEmail, setScannedEmail] = useState<string | null>(null);
 const [scanned, setScanned] = useState(false);
 const [processingScan, setProcessingScan] = useState(false);
 const [showScanner, setShowScanner] = useState(false);
+const [attendeeCount, setAttendeeCount] = useState(0);
 const navigation = useNavigation();
 const router = useRouter();
+
 
 
 
@@ -36,7 +38,31 @@ const router = useRouter();
     id: string;
     firstName: string;
     lastName: string;
+    numberAttendees: number;
   }
+  useEffect(() => {
+    async function loadCount() {
+      if (!selectedEvent) {
+        setAttendeeCount(0);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("attendanceByEvent")
+        .select("numberAttendees")
+        .eq("eventID", selectedEvent)
+        .single();
+
+      if (error || !data) {
+        setAttendeeCount(0);
+        return;
+      }
+
+      setAttendeeCount(data.numberAttendees ?? 0);
+    }
+
+    loadCount();
+  }, [selectedEvent]);
   useEffect(() => {
       async function loadScheduleAll(){
         const { data, error } = await supabase
@@ -102,8 +128,6 @@ const router = useRouter();
       return acc;
     }, {} as Record<string, { eventID: string; eventName: string; speaker: string }>);
 
-    console.log(eventMap);
-
     if (showScanner) {
     return (
         <View style={{ flex: 1 }}>
@@ -138,6 +162,18 @@ const router = useRouter();
             .single();
             if (!attendee) return;
 
+            const { data: existingRecord, error: checkError } = await supabase
+            .from("attendanceByAttendee")
+            .select(selectedEvent)
+            .eq("email", data)
+            .single();
+
+            if (existingRecord) {
+                // Attendee has already scanned for this event
+                setProcessingScan(false);
+                return;
+            }
+
             const { error: updateError } = await supabase
             .from("attendanceByAttendee")
             .update({ [selectedEvent]: "True" })
@@ -167,6 +203,41 @@ const router = useRouter();
                     if (newerror) {
                     console.log(newerror);
                     }
+            const {data: numberAttendees, error: numberError} = await supabase
+            .from("attendanceByEvent")
+            .select("numberAttendees")
+            .eq("eventID", selectedEvent)
+            .single();
+
+            const currentNumber = typeof numberAttendees?.numberAttendees === "number" ? numberAttendees.numberAttendees : 0;
+
+            const updatedNumber = currentNumber + 1;
+            setScheduleAll((prev) =>
+              prev.map((event) =>
+                event.id === selectedEvent
+                  ? { ...event, numberAttendees: updatedNumber }
+                  : event
+              )
+            );
+            setAttendeeCount((prev) => prev + 1);
+
+            setScheduleSem((prev) =>
+              prev.map((event) =>
+                event.id === selectedEvent
+                  ? { ...event, numberAttendees: updatedNumber }
+                  : event
+              )
+            );
+
+            const { error: numberUpdateError } = await supabase
+            .from("attendanceByEvent")
+            .update({ numberAttendees: updatedNumber })
+            .eq("eventID", selectedEvent);
+            
+            if (numberUpdateError) {
+                console.log(numberUpdateError);
+            }
+
             Toast.show({
             type: "success",
             text1: `${attendee.firstName} ${attendee.lastName} checked in`,
@@ -254,6 +325,16 @@ const router = useRouter();
             
         }}
             />
+        <Text style={[
+            theme.typography.title,
+            {
+              color: theme.colors.primaryDarkGray, 
+              textAlign: "center",
+              marginBottom: 16,
+            },
+          ]}>
+            Number of attendees: {attendeeCount}
+        </Text>
         <Button title="Open camera to scan QR code" variant="secondary"
             onPress={async () => {
             if (!cameraPermission?.granted) {

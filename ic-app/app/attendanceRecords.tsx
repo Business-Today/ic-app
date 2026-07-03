@@ -26,6 +26,54 @@ export default function AttendanceRecords() {
     })
   : attendees;
 
+    const listHeader = (
+  <>
+    <Text
+      style={[
+        theme.typography.biggestTitle,
+        {
+          color: theme.colors.primaryBlue,
+          textAlign: "center",
+          marginBottom: 16,
+        },
+      ]}
+    >
+      Attendance: {eventName}
+    </Text>
+
+    <Text
+      style={[
+        theme.typography.title,
+        {
+          color: theme.colors.primaryDarkGray,
+          textAlign: "center",
+          marginBottom: 16,
+        },
+      ]}
+    >
+      {eventSpeaker}
+    </Text>
+
+    <TextInput
+      placeholder="Search attendees..."
+      value={searchText}
+      onChangeText={setSearchText}
+      placeholderTextColor="#999"
+      style={{
+        backgroundColor: "#fff",
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#ccc",
+        marginHorizontal: 16,
+        marginBottom: 16,
+        fontSize: 16,
+      }}
+    />
+  </>
+);
+
 
 
     useEffect(() => {
@@ -65,42 +113,7 @@ export default function AttendanceRecords() {
       data={filteredAttendees}
       keyExtractor={(item) => item.email}
       contentContainerStyle={{ padding: 16 }}
-      ListHeaderComponent={() => (
-        <>
-        <Text
-          style={[
-            theme.typography.biggestTitle,
-            {
-              color: theme.colors.primaryBlue,
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}
-        >
-          Attendance: {eventName}
-        </Text>
-        <Text style={[theme.typography.title, {color: theme.colors.primaryDarkGray, textAlign: "center", marginBottom: 16,},]}>
-        {eventSpeaker}
-        </Text>
-        <TextInput
-        placeholder="Search attendees..."
-        value={searchText}
-        onChangeText={(text) => setSearchText(text)}
-        placeholderTextColor="#999"
-        style={{
-            backgroundColor: "#fff",
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: "#ccc",
-            marginHorizontal: 16,
-            marginBottom: 16,
-            fontSize: 16,
-        }}
-        />
-        </>
-  )}
+      ListHeaderComponent={listHeader}
       renderItem={({ item }) => (
         <Card>
           <Text style={[theme.typography.sectionTitle, { color: theme.colors.primaryDarkBlue, marginBottom: 8 }]}>

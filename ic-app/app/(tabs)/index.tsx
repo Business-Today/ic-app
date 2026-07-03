@@ -17,7 +17,6 @@ export default function Home() {
   const router = useRouter();
   const {scheduleWithNames} = useUser();
 
-  console.log(scheduleWithNames)
 
   useEffect(() => {
     async function checkLogin() {
