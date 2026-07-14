@@ -38,7 +38,6 @@ const router = useRouter();
     id: string;
     firstName: string;
     lastName: string;
-    numberAttendees: number;
   }
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
@@ -65,20 +64,8 @@ const router = useRouter();
         .eq("email", data)
         .single();
         if (!attendee) return;
-      console.log("Processing scan for attendee:", attendee.firstName, attendee.lastName);
 
-        const { data: existingRecord, error: checkError } = await supabase
-        .from("attendanceByAttendee")
-        .select(selectedEvent)
-        .eq("email", data)
-        .single();
-        if (existingRecord && existingRecord[selectedEvent] === "True") {
-            // Attendee has already scanned for this event
-            setProcessingScan(false);
-            return;
-        }
         isScanning.current = false; 
-        console.log("Email scanned:", data);
         const { error: updateError } = await supabase
         .from("attendanceByAttendee")
         .update({ [selectedEvent]: "True" })
@@ -108,37 +95,7 @@ const router = useRouter();
                 if (newerror) {
                 console.log(newerror);
                 }
-        const {data: numberAttendees, error: numberError} = await supabase
-        .from("attendanceByEvent")
-        .select("numberAttendees")
-        .eq("eventID", selectedEvent)
-        .single();
-
-        const currentNumber = typeof numberAttendees?.numberAttendees === "number" ? numberAttendees.numberAttendees : 0;
-        const updatedNumber = currentNumber + 1;
-        setScheduleAll((prev) =>
-          prev.map((event) =>
-            event.id === selectedEvent
-              ? { ...event, numberAttendees: updatedNumber }
-              : event
-          )
-        );
-        setScheduleSem((prev) =>
-          prev.map((event) =>
-            event.id === selectedEvent
-              ? { ...event, numberAttendees: updatedNumber }
-              : event
-          )
-        );
-
-        const { error: numberUpdateError } = await supabase
-        .from("attendanceByEvent")
-        .update({ numberAttendees: updatedNumber })
-        .eq("eventID", selectedEvent);
-        
-        if (numberUpdateError) {
-            console.log(numberUpdateError);
-        }
+      
 
         Toast.show({
         type: "success",

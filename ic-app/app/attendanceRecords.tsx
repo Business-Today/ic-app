@@ -96,7 +96,7 @@ export default function AttendanceRecords() {
         if (error) return [];
 
         const emails = eventAttendance?.emails
-        ? eventAttendance.emails.split(",").map((e: string) => e.trim())
+        ? [...new Set(eventAttendance.emails.split(",").map((e: string) => e.trim()))]
         : [];
 
         if (emails.length === 0) return [];

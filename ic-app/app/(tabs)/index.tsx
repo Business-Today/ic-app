@@ -50,8 +50,7 @@ export default function Home() {
     return new Date();
   };
   const upcomingEvents = useMemo(() => {
-    const now = new Date('2026-11-07T07:00:00')
-    // const now = getCurrentDate();
+    const now = getCurrentDate();
 
     return scheduleWithNames
       .filter((event) => new Date(event.startTime) > now)
