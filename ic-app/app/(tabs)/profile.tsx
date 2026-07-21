@@ -7,6 +7,8 @@ import { supabase } from "../../lib/supabase";
 import { Linking, Alert } from "react-native";
 import { useState, useMemo } from "react";
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function Profile() {
   const [mode, setMode] = useState<"edit" | "view">("view");
@@ -18,6 +20,7 @@ export default function Profile() {
   const [interests, setInterests] = useState(user?.interests ?? "");
   const [linkedin, setLinkedin] = useState(user?.linkedin ?? "");
   const [instagram, setInstagram] = useState(user?.instagram ?? "");
+  const router = useRouter();
   const [profileImage, setProfileImage] = useState(
     user?.profilePictureUrl ?? null
   );
@@ -140,6 +143,12 @@ export default function Profile() {
     setMode("view");
   }
 
+  async function handleLogout() {
+    await AsyncStorage.removeItem("loggedInEmail");
+    setUser(null);
+    router.replace("/login");
+  }
+  
   return (
 
     <ScrollView
@@ -372,6 +381,12 @@ export default function Profile() {
       />
     )}
     </Card>
+    <Button
+      title="Sign Out"
+      variant="secondary"
+      onPress={handleLogout}
+    />
     </ScrollView>
+    
   );
 }

@@ -40,7 +40,7 @@ export default function Login() {
     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     style={{ flex: 1 }}
   >
-    <ScrollView style={{ flex: 1 }}
+    <ScrollView style={{ flex: 1, backgroundColor: "#FFFFFF" }}
       contentContainerStyle={{
         padding: 16,
         marginTop: 100,

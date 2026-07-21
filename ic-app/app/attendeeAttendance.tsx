@@ -2,7 +2,7 @@ import { View, Text, TextInput, FlatList } from "react-native";
 import Button from "@/components/Button"
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import theme from "@/theme";
 import Card from "@/components/Card";
 import { useLocalSearchParams } from "expo-router";
@@ -78,6 +78,7 @@ export default function SearchAttendee() {
 
   return (
     <View style={{ flex: 1, padding: 24 }}>
+      
         <Text style={[
             theme.typography.title,
             {

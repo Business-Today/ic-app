@@ -19,11 +19,28 @@ export default function RootLayout() {
           name="login"
           options={{ headerShown: false }}
         />
-
         <Stack.Screen
           name="(tabs)"
           options={{ headerShown: false }}
         />
+
+        <Stack.Screen
+          name="attendeeAttendance"
+          options={{ title: "", 
+                headerBackTitle: "Back",
+
+           }}
+        />
+
+        <Stack.Screen
+          name="attendanceRecords"
+          options={{ title: "",
+                headerBackTitle: "Back",
+
+           }}
+        />
+
+        
 
         <Stack.Screen
           name="modal"
@@ -33,9 +50,11 @@ export default function RootLayout() {
           }}
         />
       </Stack>
+      
 
       <StatusBar style="dark" />
       <Toast />
     </UserProvider>
+    
   );
 }

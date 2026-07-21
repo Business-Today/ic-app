@@ -72,10 +72,13 @@ export default function Home() {
 
   useEffect(() => {
     async function loadUser() {
+
+      const savedEmail = await AsyncStorage.getItem("loggedInEmail");
+
       const { data, error } = await supabase
         .from("attendeeProfile")
         .select("email, firstName, lastName, linkedin, instagram, school, major, interests, profilePictureUrl")
-        .eq("email", user?.email)
+        .eq("email", savedEmail)
         .single();
 
       if (error) {
