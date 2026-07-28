@@ -15,7 +15,6 @@ const [scheduleAll, setScheduleAll] = useState<Schedule[]>([]);
 const [scheduleSem, setScheduleSem] = useState<Schedule[]>([]);
 const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
 const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-const isScanning = useRef(false);
 const [scannedEmail, setScannedEmail] = useState<string | null>(null);
 const [scanned, setScanned] = useState(false);
 const [processingScan, setProcessingScan] = useState(false);
@@ -23,18 +22,27 @@ const [showScanner, setShowScanner] = useState(false);
 const [attendeeCount, setAttendeeCount] = useState(0);
 const navigation = useNavigation();
 const router = useRouter();
-
-
-
+const [customSchedule, setCustomSchedule] = useState<Schedule[]>([]);
+const [speakersAll, setSpeakersAll] = useState<Speaker[]>([]);
+const isScanning = useRef(false);
+const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
 
  type Schedule = {
-    event: string;
+    title: string;
     startTime: string;
     endTime: string;
     location: string;
-    type: string;
+    type?: string;
     idSpeaker: string;
     day: string;
+    optionID: string;
+    firstName?: string;
+    lastName?: string;
+    emails?: string;
+    numberAttendees?: number;
+  }
+
+  type Speaker = {
     id: string;
     firstName: string;
     lastName: string;
@@ -42,6 +50,7 @@ const router = useRouter();
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (scanned) return;
+    if (isScanning.current) return;
     if (!selectedEvent) {
         Toast.show({
             type: "error",
@@ -58,39 +67,46 @@ const router = useRouter();
         isScanning.current = true;
         setProcessingScan(true);
         setScannedEmail(data);
-        const {data: attendee} = await supabase
+        const {data: attendee, error: attendeeError} = await supabase
         .from("attendeeProfile")
         .select("firstName, lastName")
         .eq("email", data)
         .single();
         if (!attendee) return;
-
-        isScanning.current = false; 
-        const { error: updateError } = await supabase
-        .from("attendanceByAttendee")
-        .update({ [selectedEvent]: "True" })
-        .eq("email", data);
-
-        if (updateError || !data) {
-            console.log(updateError);
-            setProcessingScan(false);
+        if (attendeeError) {
+            console.log(attendeeError);
             return;
         }
+        console.log("selectedEvent: ", selectedEvent);
         const { data: me, error: fetchError } = await supabase
-            .from("attendanceByEvent")
+            .from("scheduleOptions")
             .select("emails")
-            .eq("eventID", selectedEvent)
+            .eq("optionID", selectedEvent)
             .single();
+        if (fetchError) {
+            console.log(fetchError);
+            return;
+        }
         const currentEmails = typeof me?.emails === "string" ? me.emails : "";
+        const emailList = currentEmails
+          .split(",")
+          .map((e) => e.trim())
+          .filter(Boolean);
 
+        if (emailList.includes(data)) {
+          return;
+        }
+
+        console.log("Current emails: ", currentEmails);
+        console.log("Scanned email: ", data);
         const updatedEmails =
         currentEmails.trim() === ""
             ? data
             : `${currentEmails},${data}`;
         const { error: newerror } = await supabase
-                .from("attendanceByEvent")
+                .from("scheduleOptions")
                 .update({ emails: updatedEmails })
-                .eq("eventID", selectedEvent);
+                .eq("optionID", selectedEvent);
 
                 if (newerror) {
                 console.log(newerror);
@@ -107,7 +123,7 @@ const router = useRouter();
         setTimeout(() => {
           isScanning.current = false;
           setScanned(false);
-        }, 500)
+        }, 2000)
   }
 }
 
@@ -119,9 +135,9 @@ const router = useRouter();
       }
 
       const { data, error } = await supabase
-        .from("attendanceByEvent")
+        .from("scheduleOptions")
         .select("numberAttendees")
-        .eq("eventID", selectedEvent)
+        .eq("optionID", selectedEvent)
         .single();
 
       if (error || !data) {
@@ -134,10 +150,11 @@ const router = useRouter();
 
     loadCount();
   }, [selectedEvent]);
+  
   useEffect(() => {
       async function loadScheduleAll(){
         const { data, error } = await supabase
-        .from("speakerProfileAll")
+        .from("scheduleOptions")
         .select("*");
   
         if (error) {
@@ -150,51 +167,39 @@ const router = useRouter();
   
       loadScheduleAll()
     }, []);
-    useEffect(() => {
-        async function loadScheduleSem(){
-        const { data, error } = await supabase
-        .from("speakerProfileSem")
-        .select("*");
   
+    useEffect(() => {
+      async function loadSpeakers(){
+        const { data, error } = await supabase
+        .from("speakerProfile")
+        .select("*");
+
         if (error) {
           console.error(error);
           return;
         }
-  
-        setScheduleSem(data);
+
+        setSpeakersAll(data);
       }
-  
-      loadScheduleSem()
+      loadSpeakers();
     }, []);
 
-    const schedule = useMemo(() => {
-        return [...scheduleSem, ...scheduleAll];
-      }, [scheduleSem, scheduleAll]);
-    const eventsForDay = useMemo(() => {
-    return schedule.filter(
-        (event) => event.day === selectedDay
-    );
-    }, [schedule, selectedDay]);
-
-    const uniqueEventsForDay = eventsForDay.filter(
-        (event, index, self) => {
-            const isExecSem = 
-            event.event.startsWith("Panel") || event.event.startsWith("Recruitment");
-            if (isExecSem){
-                return index === self.findIndex((e) => e.event === event.event);
-            }
-            return true;
-        }
+    const speakerMap = new Map(
+      speakersAll.map((speaker) => [speaker.id, speaker])
     )
-    const selectedEventObj = uniqueEventsForDay.find((event) => event.id === selectedEvent);
-    const eventName = selectedEventObj ? selectedEventObj.event : "";
-    const eventSpeaker = selectedEventObj ? `${selectedEventObj.firstName} ${selectedEventObj.lastName}` : "";
 
-    const eventMap = schedule.reduce((acc, event) => {
-      acc[event.id] = {
-        eventID: event.id,
-        eventName: event.event,
-        speaker: `${event.firstName} ${event.lastName}`,
+  
+    const selectedEventObj = scheduleAll.find((event) => event.optionID === selectedEvent);
+    const eventName = selectedEventObj ? selectedEventObj.title : "";
+    const eventSpeaker = selectedEventObj ? `${speakerMap.get(selectedEventObj.idSpeaker)?.firstName} ${speakerMap.get(selectedEventObj.idSpeaker)?.lastName}` : "";
+
+    console.log("events: ", scheduleAll);
+
+    const eventMap = scheduleAll.reduce((acc, event) => {
+      acc[event.optionID] = {
+        eventID: event.optionID,
+        eventName: event.title,
+        speaker: `${speakerMap.get(event.idSpeaker)?.firstName} ${speakerMap.get(event.idSpeaker)?.lastName}`,
       };
       return acc;
     }, {} as Record<string, { eventID: string; eventName: string; speaker: string }>);
@@ -242,11 +247,24 @@ const router = useRouter();
             }}
             value={selectedEvent}
             onValueChange={setSelectedEvent}
-            items={uniqueEventsForDay.map((event) => ({
-                label: event.event.startsWith("Panel") || event.event.startsWith("Recruitment") ? event.event
-                :`${event.event}, ${event.firstName} ${event.lastName}`,
-                value: event.id,
-            }))}
+            items={scheduleAll
+            .filter((event) => event.day === selectedDay) 
+            .map((event) => {
+              const speaker = speakerMap.get(event.idSpeaker);
+              const isSpeakerEvent =
+                event.title.startsWith("Executive") ||
+                event.title.startsWith("Keynote");``
+
+              const label =
+                isSpeakerEvent && speaker?.firstName && speaker?.lastName
+                  ? `${event.title}, ${speaker.firstName} ${speaker.lastName}`
+                  : event.title;
+
+              return {
+                label,
+                value: event.optionID,
+              };
+            })}
             useNativeAndroidPickerStyle={false} 
             style={{
             inputIOS: {

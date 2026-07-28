@@ -52,8 +52,8 @@ export default function SearchAttendee() {
 
   async function fetchCheckIns(email: string) {
     const { data: eventAttendance, error } = await supabase
-      .from("attendanceByEvent")
-      .select("eventID, emails");
+      .from("scheduleOptions")
+      .select("optionID, emails");
 
     if (error) {
       console.log(error);

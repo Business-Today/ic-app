@@ -19,6 +19,7 @@ export default function Schedule() {
   const { schedule, setSchedule } = useUser();
   const params = useLocalSearchParams();
   const [scheduleKeynote, setScheduleKeynote] = useState<Speaker[]>([]);
+  const [allScheduleIds, setAllScheduleIds] = useState<string[]>([]);
 
 
 
@@ -102,26 +103,30 @@ export default function Schedule() {
     ];
   }, [personalSchedules]);
 
+
   useEffect(() => {
-    if (seminar_ids.length === 0) return;
-    async function loadSeminarSpeakers() {
+    async function loadAllScheduleOptionIds() {
       const { data, error } = await supabase
-        .from("speakerProfileSem")
-        .select('*')
-        .in('id', seminar_ids);
+        .from("scheduleOptions")
+        .select("optionID, type");
 
-        if (error) {
-          console.error(error);
-          return;
-        }
-        setSeminarSpeakers(data ?? []);
+      if (error) {
+        console.error(error);
+        return;
       }
-        loadSeminarSpeakers();
-    }, [seminar_ids]);
 
+      const typeAllIds = (data ?? [])
+        .filter((item: { type?: string }) => item.type === "all")
+        .map((item: { optionID: string }) => item.optionID);
+
+      setAllScheduleIds(typeAllIds);
+    }
+
+    loadAllScheduleOptionIds();
+  }, []);
 
   const schedule_ids = useMemo(() => {
-    if (!personalSchedules) return [];
+    if (!personalSchedules) return allScheduleIds;
 
     return [
       `exec1_${personalSchedules.exec1}`,
@@ -130,8 +135,11 @@ export default function Schedule() {
       `exec4_${personalSchedules.exec4}`,
       `offsite_${personalSchedules.offsite}`,
       "all",
+      ...allScheduleIds,
     ];
-  }, [personalSchedules]);
+  }, [personalSchedules, allScheduleIds]);
+
+
 
   useEffect(() => {
     if (schedule_ids.length === 0) return;
@@ -153,37 +161,40 @@ export default function Schedule() {
     loadScheduleAll();
   }, [schedule_ids]);
 
-
+  const speaker_ids = useMemo(() => {
+    return Array.from(
+      new Set(
+        schedule.flatMap((event) =>
+          (event?.idSpeaker ?? "")
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean)
+        )
+      )
+    );
+  }, [schedule]);
 
   useEffect(() => {
-    async function loadSpeakersAll(){
+    if (speaker_ids.length === 0) return;
+
+    async function loadSpeakers() {
       const { data, error } = await supabase
-      .from("speakerProfileAll")
-      .select("*");
+        .from("speakerProfile")
+        .select("*")
+        .in("id", speaker_ids);
 
       if (error) {
         console.error(error);
         return;
       }
-      setScheduleKeynote(data ?? []); 
+      setSpeakersAll(data ?? []);
     }
 
-    loadSpeakersAll()
-  }, []);
-
-  const speakers = useMemo(() => {
-    return [...seminarSpeakers, ...scheduleKeynote];
-  }, [seminarSpeakers, scheduleKeynote]);
-  useEffect(() => {
-    if (!seminarSpeakers.length || !scheduleKeynote.length) return;
-
-    const combinedSpeakers = [...seminarSpeakers, ...scheduleKeynote];
-    setSpeakersAll(combinedSpeakers); 
-  }, [seminarSpeakers, scheduleKeynote]);
-
+    loadSpeakers();
+  }, [speaker_ids]);
 
   const speakerMap = new Map(
-    speakers.map((speaker) => [speaker.id, speaker])
+    speakersAll.map((speaker) => [speaker.id, speaker])
   );
   const scheduleWithNames = schedule.map((event) => {
     let speakerNames = (event?.idSpeaker ?? "")
@@ -251,10 +262,9 @@ return (
       </View>
     </View>
 
-    {/* LISTS */}
     {mode === "speakers" ? (
       <FlatList<Speaker>
-        data={speakers.filter((item) => item.day === selectedDay)}
+        data={speakersAll.filter((item) => item.day === selectedDay)}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 16 }}
         renderItem={({ item }) => (

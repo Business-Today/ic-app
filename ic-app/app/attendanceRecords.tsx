@@ -88,9 +88,9 @@ export default function AttendanceRecords() {
     useEffect(() => {
     async function fetchAttendees() {
         const { data: eventAttendance, error } = await supabase
-        .from("attendanceByEvent")
+        .from("scheduleOptions")
         .select("emails")
-        .eq("eventID", eventID)
+        .eq("optionID", eventID)
         .single();
 
         if (error) return [];
