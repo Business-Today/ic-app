@@ -77,7 +77,6 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
             console.log(attendeeError);
             return;
         }
-        console.log("selectedEvent: ", selectedEvent);
         const { data: me, error: fetchError } = await supabase
             .from("scheduleOptions")
             .select("emails")
@@ -97,8 +96,6 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
           return;
         }
 
-        console.log("Current emails: ", currentEmails);
-        console.log("Scanned email: ", data);
         const updatedEmails =
         currentEmails.trim() === ""
             ? data
@@ -193,7 +190,6 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
     const eventName = selectedEventObj ? selectedEventObj.title : "";
     const eventSpeaker = selectedEventObj ? `${speakerMap.get(selectedEventObj.idSpeaker)?.firstName} ${speakerMap.get(selectedEventObj.idSpeaker)?.lastName}` : "";
 
-    console.log("events: ", scheduleAll);
 
     const eventMap = scheduleAll.reduce((acc, event) => {
       acc[event.optionID] = {
@@ -324,6 +320,13 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
         router.push({
             pathname: "/attendeeAttendance",
             params: { schedule: JSON.stringify(eventMap) },
+        })
+    }}
+    />
+    <Button title="Check in attendee manually" variant="secondary" onPress={() => {
+        router.push({
+            pathname: "/manualCheckIn",
+            params: { schedule: JSON.stringify(eventMap), eventID: selectedEvent },
         })
     }}
     />

@@ -66,8 +66,8 @@ export default function SearchAttendee() {
       const emails = event.emails?.split(",").map((e: string) => e.trim()) || [];
       if (emails.includes(email)) {
         checkIns.push({
-          eventID: event.eventID,
-          eventName: event.eventID,
+          eventID: event.optionID,
+          eventName: event.optionID,
           email: email,
         });
       }

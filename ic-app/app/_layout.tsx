@@ -40,6 +40,14 @@ export default function RootLayout() {
            }}
         />
 
+        <Stack.Screen
+          name="manualCheckIn"
+          options={{ title: "",
+                headerBackTitle: "Back",
+
+           }}
+        />
+
         
 
         <Stack.Screen
