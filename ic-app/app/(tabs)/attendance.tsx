@@ -15,7 +15,6 @@ const [scheduleAll, setScheduleAll] = useState<Schedule[]>([]);
 const [scheduleSem, setScheduleSem] = useState<Schedule[]>([]);
 const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
 const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-const [scannedEmail, setScannedEmail] = useState<string | null>(null);
 const [scanned, setScanned] = useState(false);
 const [processingScan, setProcessingScan] = useState(false);
 const [showScanner, setShowScanner] = useState(false);
@@ -42,6 +41,7 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
     numberAttendees?: number;
   }
 
+
   type Speaker = {
     id: string;
     firstName: string;
@@ -66,7 +66,16 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
         }
         isScanning.current = true;
         setProcessingScan(true);
-        setScannedEmail(data);
+        const { data: me, error: fetchError } = await supabase
+            .from("scheduleOptions")
+            .select("emails, type")
+            .eq("optionID", selectedEvent)
+            .single();
+        if (fetchError) {
+            console.log(fetchError);
+            return;
+        }
+        
         const {data: attendee, error: attendeeError} = await supabase
         .from("attendeeProfile")
         .select("firstName, lastName")
@@ -75,15 +84,6 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
         if (!attendee) return;
         if (attendeeError) {
             console.log(attendeeError);
-            return;
-        }
-        const { data: me, error: fetchError } = await supabase
-            .from("scheduleOptions")
-            .select("emails")
-            .eq("optionID", selectedEvent)
-            .single();
-        if (fetchError) {
-            console.log(fetchError);
             return;
         }
         const currentEmails = typeof me?.emails === "string" ? me.emails : "";
@@ -192,11 +192,16 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
 
 
     const eventMap = scheduleAll.reduce((acc, event) => {
-      acc[event.optionID] = {
-        eventID: event.optionID,
-        eventName: event.title,
-        speaker: `${speakerMap.get(event.idSpeaker)?.firstName} ${speakerMap.get(event.idSpeaker)?.lastName}`,
-      };
+      const speakerData = speakerMap.get(event.idSpeaker);
+
+      const speaker = [speakerData?.firstName, speakerData?.lastName]
+        .filter((name) => name && name !== "undefined" && name !== "null")
+        .join(" ");
+       acc[event.optionID] = {
+          eventID: event.optionID,
+          eventName: event.title,
+          speaker,
+        };
       return acc;
     }, {} as Record<string, { eventID: string; eventName: string; speaker: string }>);
 
@@ -249,7 +254,7 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
               const speaker = speakerMap.get(event.idSpeaker);
               const isSpeakerEvent =
                 event.title.startsWith("Executive") ||
-                event.title.startsWith("Keynote");``
+                event.title.startsWith("Keynote");
 
               const label =
                 isSpeakerEvent && speaker?.firstName && speaker?.lastName
@@ -323,13 +328,18 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
         })
     }}
     />
+    <View style={{ marginBottom: 16 }}>
     <Button title="Check in attendee manually" variant="secondary" onPress={() => {
         router.push({
             pathname: "/manualCheckIn",
             params: { schedule: JSON.stringify(eventMap), eventID: selectedEvent },
-        })
+        });
     }}
     />
+    </View>
+    <Text style = {[theme.typography.body, {color: theme.colors.primaryDarkGray, textAlign: "center", marginBottom: 20}]}>
+      If any urgent issues, contact Miyu at 412-277-1460.
+      </Text>
     </View>
 
   );

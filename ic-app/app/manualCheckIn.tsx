@@ -31,6 +31,8 @@ export default function SearchAttendee() {
   const eventMapStr = params.schedule as string;
   const selectedEvent = params.eventID as string;
   const eventMap = eventMapStr ? JSON.parse(eventMapStr) : {};
+  const speaker = eventMap[selectedEvent]?.speaker;
+
   
 
   async function searchAttendees() {
@@ -95,16 +97,20 @@ export default function SearchAttendee() {
           ]}>
             Check in attendee manually
         </Text>
-        <Text style={[
+        <Text
+          style={[
             theme.typography.body,
             {
               color: theme.colors.primaryDarkGray,
               textAlign: "center",
               marginBottom: 16,
             },
-          ]}>
-            Checking in for: {eventMap[selectedEvent]?.eventName || selectedEvent}, {eventMap[selectedEvent]?.speaker || ""}
+          ]}
+        >
+          Checking in for: {eventMap[selectedEvent]?.eventName || selectedEvent}
+  {speaker && speaker !== "undefined" && speaker !== "null" ? `, ${speaker}` : ""}
         </Text>
+
         <TextInput
         placeholder="Search by name or email..."
         value={searchText}
