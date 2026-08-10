@@ -1,16 +1,25 @@
-import { View, Text } from "react-native";
-import theme from "../../theme";
-import { useState, useEffect, useMemo, useRef } from "react";
-import Button from "../../components/Button";
 import { supabase } from "@/lib/supabase";
-import RNPickerSelect from "react-native-picker-select";
-import { CameraView, useCameraPermissions } from "expo-camera"; 
-import Toast from "react-native-toast-message";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useNavigation, useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { Text, View } from "react-native";
+import RNPickerSelect from "react-native-picker-select";
+import Toast from "react-native-toast-message";
+import Button from "../../components/Button";
+import theme from "../../theme";
 
 
 export default function Attendance() {
-const [selectedDay, setSelectedDay] = useState("day1");
+const [selectedDay, setSelectedDay] = useState(() => {
+  const today = new Date().getDate(); // day of the month: 1–31
+
+  // Replace these dates with the real dates of your 3-day event
+  if (today === 6) return "day1";
+  if (today === 7) return "day2";
+  if (today === 8) return "day3";
+
+  return "day1"; // fallback before/after the event
+});
 const [scheduleAll, setScheduleAll] = useState<Schedule[]>([]);
 const [scheduleSem, setScheduleSem] = useState<Schedule[]>([]);
 const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
@@ -48,6 +57,7 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
     lastName: string;
   }
 
+
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (scanned) return;
     if (isScanning.current) return;
@@ -74,6 +84,28 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
         if (fetchError) {
             console.log(fetchError);
             return;
+        }
+
+        console.log("Event:", selectedEvent);
+
+        if (me.type == "seminar"){
+          const current_event = selectedEvent?.split("_")
+          const { data: sem_number, error: num_error } = await supabase
+          .from("attendeeProfile")
+          .select(`${current_event[0]}`)
+          .eq("email", data)
+          .single();
+          console.log(sem_number[current_event[0]]);
+          console.log(current_event[1]);
+          if (String(sem_number[current_event[0]]) !== current_event[1]){
+            Toast.show({
+              type: "error",
+              text1: "Attendee not registered for this seminar",
+              position: "bottom",
+              visibilityTime: 2000,
+            });
+            return;
+          }
         }
         
         const {data: attendee, error: attendeeError} = await supabase
@@ -152,7 +184,9 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
       async function loadScheduleAll(){
         const { data, error } = await supabase
         .from("scheduleOptions")
-        .select("*");
+        .select("*")
+        .order("startTime", { ascending: true })
+        .order("title", { ascending: true });
   
         if (error) {
           console.error(error);
