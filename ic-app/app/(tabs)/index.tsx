@@ -1,13 +1,12 @@
-import { ScrollView, Text } from "react-native";
-import Card from "../../components/Card";
-import Button from "../../components/Button";
-import SectionTitle from "../../components/SectionTitle";
-import theme from "../../theme";
-import { useEffect, useState, useMemo } from "react";
-import { supabase } from "../../lib/supabase";
-import { useUser } from "../../contexts/UserContext";
-import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import { useEffect, useMemo } from "react";
+import { ScrollView, Text } from "react-native";
+import Button from "../../components/Button";
+import Card from "../../components/Card";
+import { useUser } from "../../contexts/UserContext";
+import { supabase } from "../../lib/supabase";
+import theme from "../../theme";
 
 
 
@@ -50,9 +49,12 @@ export default function Home() {
     return new Date();
   };
   const upcomingEvents = useMemo(() => {
+    if (!Array.isArray(scheduleWithNames)) return [];
+
     const now = getCurrentDate();
 
     return scheduleWithNames
+      .filter((event) => event && typeof event === "object" && event.startTime)
       .filter((event) => new Date(event.startTime) > now)
       .sort(
         (a, b) =>
@@ -60,7 +62,7 @@ export default function Home() {
           new Date(b.startTime).getTime()
       )
       .slice(0, 2);
-  }, [schedule]);
+  }, [scheduleWithNames]);
 
   function formatTime(timestamp: string) {
     return new Date(timestamp).toLocaleTimeString("en-US", {
@@ -120,42 +122,46 @@ export default function Home() {
         Upcoming events
       </Text>
 
-      {upcomingEvents.map((event, index) => (
-        <Card
-          key={event.id}
-          marginBottom={index === upcomingEvents.length - 1 ? 16 : 8}
-        >
-          <Text
-            style={[
-              theme.typography.sectionTitle,
-              {
-                color: theme.colors.primaryDarkGray,
-                marginBottom: 8,
-              },
-            ]}
-          >
-            {event.title}
-          </Text>
+      {upcomingEvents.map((event, index) => {
+        if (!event || typeof event !== "object") return null;
 
-          {event.idSpeaker ? (
+        return (
+          <Card
+            key={event.optionID ?? `${event.title ?? "event"}-${index}`}
+            marginBottom={index === upcomingEvents.length - 1 ? 16 : 8}
+          >
             <Text
               style={[
-                theme.typography.body,
+                theme.typography.sectionTitle,
                 {
                   color: theme.colors.primaryDarkGray,
-                  marginBottom: 4,
+                  marginBottom: 8,
                 },
               ]}
             >
-              {event.idSpeaker}
+              {event.title ?? "Untitled event"}
             </Text>
-          ) : null}
 
-          <Text style={theme.typography.body}>
-            {formatTime(event.startTime)} ・ {event.location}
-          </Text>
-        </Card>
-      ))}
+            {event.idSpeaker ? (
+              <Text
+                style={[
+                  theme.typography.body,
+                  {
+                    color: theme.colors.primaryDarkGray,
+                    marginBottom: 4,
+                  },
+                ]}
+              >
+                {event.idSpeaker}
+              </Text>
+            ) : null}
+
+            <Text style={theme.typography.body}>
+              {event.startTime ? formatTime(event.startTime) : "Time TBD"} ・ {event.location ?? "Location TBD"}
+            </Text>
+          </Card>
+        );
+      })}
       {upcomingEvents.length === 0 && (
         <Card marginBottom={16}>
           <Text style={theme.typography.body}>

@@ -1,15 +1,20 @@
 {
   "expo": {
-    "name": "ic-app",
+    "name": "BT IC",
     "slug": "ic-app",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/ic-logo-app.png",
     "scheme": "icapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "buildNumber": "2",
+      "supportsTablet": false,
+      "bundleIdentifier": "org.businesstoday.ic",
+      "infoPlist": {
+        "NSCameraUsageDescription": "BT Conference uses your camera to scan QR codes for conference check-in and to take a profile photo for your attendee profile.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +22,6 @@
         "foregroundImage": "./assets/images/app-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
@@ -47,7 +51,20 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to take photos and videos."
+          "cameraPermission": "BT Conference uses your camera to scan QR codes for conference check-in and to take a profile photo for your attendee profile."
+        }
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
         }
       ]
     ],

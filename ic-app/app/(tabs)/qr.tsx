@@ -1,12 +1,12 @@
-import { View, FlatList, Text, TouchableOpacity, Alert } from "react-native";
-import Card from "../../components/Card";
-import theme from "../../theme";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRef, useState } from "react";
-import Button from "../../components/Button";
+import { Alert, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
+import Button from "../../components/Button";
+import Card from "../../components/Card";
 import { useUser } from "../../contexts/UserContext";
-import { CameraView, useCameraPermissions } from "expo-camera"; 
 import { supabase } from "../../lib/supabase";
+import theme from "../../theme";
 
 export default function QR() {
   const { user } = useUser();
@@ -93,6 +93,27 @@ export default function QR() {
                       .from("attendeeProfile")
                       .update({ network: updatedConnections })
                       .eq("email", user.email);
+                    
+                    const { data: newEmails, error: newfetchError } = await supabase
+                      .from("attendeeProfile")
+                      .select("network")
+                      .eq("email", attendee.email)
+                      .single();
+                    
+                    const newCurrentConnections =
+                        typeof newEmails?.network === "string" ? newEmails.network : "";
+                      
+                    const newemailToAdd = user.email;
+                    
+                    const newUpdatedConnections =
+                      newCurrentConnections.trim() === ""
+                        ? newemailToAdd
+                        : `${newCurrentConnections},${newemailToAdd}`;
+                    
+                    const { error: newUpdateError } = await supabase
+                      .from("attendeeProfile")
+                      .update({ network: newUpdatedConnections })
+                      .eq("email", attendee.email);
 
                     if (updateError) {
                       console.log(updateError);

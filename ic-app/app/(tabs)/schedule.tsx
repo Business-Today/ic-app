@@ -1,25 +1,32 @@
-import { View, FlatList, Text, TouchableOpacity,  } from "react-native";
-import Card from "../../components/Card";
-import theme from "../../theme";
-import { useState, useMemo } from "react";
-import Button from "../../components/Button";
-import { useUser } from "../../contexts/UserContext";
-import { useEffect } from "react";
-import { supabase } from "../../lib/supabase";
 import { useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import { FlatList, Text, View } from "react-native";
+import Button from "../../components/Button";
+import Card from "../../components/Card";
+import { useUser } from "../../contexts/UserContext";
+import { supabase } from "../../lib/supabase";
+import theme from "../../theme";
 
 export default function Schedule() {
-  const [selectedDay, setSelectedDay] = useState("day1");
+  const [selectedDay, setSelectedDay] = useState(() => {
+  const today = new Date().getDate(); // day of the month: 1–31
+
+  // Replace these dates with the real dates of your 3-day event
+  if (today === 6) return "day1";
+  if (today === 7) return "day2";
+  if (today === 8) return "day3";
+
+  return "day1"; // fallback before/after the event
+});
   const [mode, setMode] = useState<"schedule" | "speakers">("schedule");
   const { user } = useUser();
   const [personalSchedules, setSchedules] = useState<PersonalSchedule | null>(null);
   const {speakersAll, setSpeakersAll} = useUser();
   const [loading, setLoading] = useState(true);
-  const [seminarSpeakers, setSeminarSpeakers] = useState<Speaker[]>([]);
   const { schedule, setSchedule } = useUser();
   const params = useLocalSearchParams();
-  const [scheduleKeynote, setScheduleKeynote] = useState<Speaker[]>([]);
   const [allScheduleIds, setAllScheduleIds] = useState<string[]>([]);
+  const [allScheduleIdsLoaded, setAllScheduleIdsLoaded] = useState(false);
 
 
 
@@ -54,7 +61,7 @@ export default function Schedule() {
     type: string;
     idSpeaker: string;
     day: string;
-    id: string;
+    optionID: string;
   }
 
   type Speaker = {
@@ -120,6 +127,7 @@ export default function Schedule() {
         .map((item: { optionID: string }) => item.optionID);
 
       setAllScheduleIds(typeAllIds);
+      setAllScheduleIdsLoaded(true);
     }
 
     loadAllScheduleOptionIds();
@@ -142,7 +150,10 @@ export default function Schedule() {
 
 
   useEffect(() => {
+    if (!allScheduleIdsLoaded || !personalSchedules) return;
     if (schedule_ids.length === 0) return;
+
+    let isActive = true;
 
     async function loadScheduleAll() {
       const { data, error } = await supabase
@@ -155,10 +166,16 @@ export default function Schedule() {
         return;
       }
 
-      setSchedule(data ?? []);
+      if (isActive) {
+        setSchedule(data ?? []);
+      }
     }
 
     loadScheduleAll();
+
+    return () => {
+      isActive = false;
+    };
   }, [schedule_ids]);
 
   const speaker_ids = useMemo(() => {
@@ -193,26 +210,42 @@ export default function Schedule() {
     loadSpeakers();
   }, [speaker_ids]);
 
-  const speakerMap = new Map(
-    speakersAll.map((speaker) => [speaker.id, speaker])
-  );
-  const scheduleWithNames = schedule.map((event) => {
-    let speakerNames = (event?.idSpeaker ?? "")
-      .split(",")
-      .map((id) => speakerMap.get(id.trim()))
-      .filter((s): s is Speaker => s !== undefined)
-      .map((s) => `${s.firstName} ${s.lastName}`)
-      .join(", ");
-    
-    if (event?.type === "group"){
-      speakerNames = personalSchedules ? `Group ${personalSchedules.groupNumber}` : "";
-    }
+const speakerMap = useMemo(
+  () => new Map(speakersAll.map((speaker) => [speaker.id, speaker] as const)),
+  [speakersAll]
+);
 
-    return {
-      ...event,
-      idSpeaker: speakerNames,
-    };   
+const scheduleWithNames = useMemo(() => {
+  return schedule.map((event) => {
+    const speakerNames =
+      event.type === "group"
+        ? personalSchedules
+          ? `Group ${personalSchedules.groupNumber}`
+          : ""
+        : (event.idSpeaker ?? "")
+            .split(",")
+            .map((id) => speakerMap.get(id.trim()))
+            .filter((speaker): speaker is Speaker => Boolean(speaker))
+            .map((speaker) => `${speaker.firstName} ${speaker.lastName}`)
+            .join(", ");
+
+    return { ...event, idSpeaker: speakerNames };
   });
+}, [schedule, speakerMap, personalSchedules]);
+
+const visibleSpeakers = useMemo(
+  () => speakersAll.filter((speaker) => speaker.day === selectedDay),
+  [speakersAll, selectedDay]
+);
+
+const sortedScheduleForSelectedDay = useMemo(() => {
+  return scheduleWithNames
+    .filter((event) => event.day === selectedDay)
+    .sort(
+      (a, b) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+}, [scheduleWithNames, selectedDay]);
 
 return (
   <View style={{ flex: 1 }}>
@@ -300,10 +333,8 @@ return (
       />
     ) : (
       <FlatList<FullSchedule>
-        data={scheduleWithNames.filter(
-          (item) => item.day === selectedDay
-        )}
-        keyExtractor={(item) => item.id}
+        data={sortedScheduleForSelectedDay}
+        keyExtractor={(item) => item.optionID}
         contentContainerStyle={{ padding: 16 }}
         renderItem={({ item }) => (
           <Card>

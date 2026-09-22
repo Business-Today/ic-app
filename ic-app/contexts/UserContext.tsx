@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo } from "react";
+import React, { createContext, useContext, useMemo, useState } from "react";
 
 type User = {
   email: string;
@@ -13,7 +13,7 @@ type User = {
 };
 
 type ScheduleEvent = {
-  id: string;
+  optionID: string;
   title: string;
   startTime: string;
   endTime: string;
