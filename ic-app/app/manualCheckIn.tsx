@@ -1,11 +1,9 @@
-import { View, Text, TextInput, FlatList } from "react-native";
-import Button from "@/components/Button"
-import { useState } from "react";
+import Button from "@/components/Button";
 import { supabase } from "@/lib/supabase";
-import { Stack, useRouter } from "expo-router";
 import theme from "@/theme";
-import Card from "@/components/Card";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import { FlatList, Text, TextInput, View } from "react-native";
 import Toast from "react-native-toast-message";
 
 
@@ -76,6 +74,19 @@ export default function SearchAttendee() {
           .eq("optionID", selectedEvent);
       }
     }
+     const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+    const { error: historyError } = await supabase
+          .from("attendanceHistory")
+          .insert({
+            eventID: selectedEvent,
+            scannedByEmail: user.email.trim().toLowerCase(),
+            attendeeEmail: attendee.email.trim().toLowerCase(),
+            action: "check_in",
+            manual: true,
+          });
     Toast.show({
             type: "success",
             text1: `${attendee.firstName} ${attendee.lastName} checked in`,

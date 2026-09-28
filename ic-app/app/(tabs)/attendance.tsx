@@ -169,11 +169,11 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
         }
 
         const { error: historyError } = await supabase
-          .from("attendeeHistory")
+          .from("attendanceHistory")
           .insert({
             eventID: selectedEvent,
-            userEmail: user.email.trim().toLowerCase(),
-            scannedEmail: data.trim().toLowerCase(),
+            scannedByEmail: user.email.trim().toLowerCase(),
+            attendeeEmail: data.trim().toLowerCase(),
             action: "check_in",
             manual: false,
           });

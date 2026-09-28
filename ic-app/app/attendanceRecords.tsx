@@ -185,10 +185,23 @@ export default function AttendanceRecords() {
     .from("scheduleOptions")
     .update({ emails: updatedEmails })
     .eq("optionID", eventID);
+  const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+  const { error: historyError } = await supabase
+        .from("attendanceHistory")
+        .insert({
+          eventID: eventID,
+          scannedByEmail: user.email.trim().toLowerCase(),
+          attendeeEmail: attendee.email.trim().toLowerCase(),
+          action: "uncheck",
+          manual: false,
+        });
+
 
   if (updateError) {
     console.error("Could not update attendance:", updateError);
-
     Toast.show({
       type: "error",
       text1: "Could not remove check-in",

@@ -56,14 +56,13 @@ function AuthGate() {
 
     const rootSegment = segments[0];
     const isOnLoginScreen = rootSegment === "login";
-    const isInTabs = rootSegment === "(tabs)";
 
     if (!hasSession && !isOnLoginScreen) {
       router.replace("/login");
       return;
     }
 
-    if (hasSession && !isInTabs) {
+    if (hasSession && isOnLoginScreen) {
       router.replace("/(tabs)");
     }
   }, [hasSession, isLoading, router, segments]);
