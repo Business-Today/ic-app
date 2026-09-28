@@ -49,6 +49,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [schedule, setSchedule] = useState<ScheduleEvent[]>([]);
   const [speakersAll, setSpeakersAll] = useState<Speaker[]>([]);
+  
 
   const scheduleWithNames = useMemo(() => {
     if (!schedule.length || !speakersAll.length) return schedule;
