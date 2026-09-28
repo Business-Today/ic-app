@@ -1,6 +1,5 @@
 import Button from "@/components/Button";
 import Card from "@/components/Card";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
@@ -238,9 +237,24 @@ export default function Profile() {
     await Linking.openURL(normalizedUrl);
   }
 
-  async function handleLogout() {
-    await AsyncStorage.removeItem("loggedInEmail");
+ async function handleLogout() {
+    const { error } = await supabase.auth.signOut({
+      scope: "local",
+    });
+
+    if (error) {
+      console.error("Sign-out error:", error);
+
+      Alert.alert(
+        "Could not sign out",
+        "Please check your connection and try again."
+      );
+
+      return;
+    }
+
     setUser(null);
+
     router.replace("/login");
   }
 

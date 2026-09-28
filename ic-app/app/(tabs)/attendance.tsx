@@ -132,14 +132,66 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
         currentEmails.trim() === ""
             ? data
             : `${currentEmails},${data}`;
-        const { error: newerror } = await supabase
-                .from("scheduleOptions")
-                .update({ emails: updatedEmails })
-                .eq("optionID", selectedEvent);
+        const { error: updateError } = await supabase
+          .from("scheduleOptions")
+          .update({ emails: updatedEmails })
+          .eq("optionID", selectedEvent);
 
-                if (newerror) {
-                console.log(newerror);
-                }
+        if (updateError) {
+          console.error("Could not update attendance:", updateError);
+
+          Toast.show({
+            type: "error",
+            text1: "Could not check in attendee",
+            position: "bottom",
+            visibilityTime: 2000,
+          });
+
+          return;
+        }
+
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError || !user?.email) {
+          console.error("Could not get the signed-in user:", userError);
+
+          Toast.show({
+            type: "error",
+            text1: "Check-in saved, but scanner identity was unavailable",
+            position: "bottom",
+            visibilityTime: 2500,
+          });
+
+          return;
+        }
+
+        const { error: historyError } = await supabase
+          .from("attendeeHistory")
+          .insert({
+            eventID: selectedEvent,
+            userEmail: user.email.trim().toLowerCase(),
+            scannedEmail: data.trim().toLowerCase(),
+            action: "check_in",
+            manual: false,
+          });
+
+        if (historyError) {
+          console.error("Could not save attendance history:", historyError);
+
+          Toast.show({
+            type: "error",
+            text1: "Check-in saved, but activity history was not saved",
+            position: "bottom",
+            visibilityTime: 2500,
+          });
+
+          return;
+        }
+        
+        
       
 
         Toast.show({

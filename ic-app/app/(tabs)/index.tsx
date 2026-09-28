@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo } from "react";
 import { ScrollView, Text } from "react-native";
@@ -17,34 +16,6 @@ export default function Home() {
   const {scheduleWithNames} = useUser();
 
 
-  useEffect(() => {
-    async function checkLogin() {
-      const savedEmail =
-        await AsyncStorage.getItem("loggedInEmail");
-
-      if (!savedEmail) {
-        router.replace("/login");
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("attendeeProfile")
-        .select("*")
-        .eq("email", savedEmail)
-        .single();
-
-      if (error || !data) {
-        router.replace("/login");
-        return;
-      }
-
-      setUser(data);
-
-      router.replace("/(tabs)");
-    }
-
-    checkLogin();
-  }, [])
   const getCurrentDate = () => {
     return new Date();
   };
@@ -71,38 +42,39 @@ export default function Home() {
       hour12: true,
     });
   }
-
   useEffect(() => {
     async function loadUser() {
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-      const savedEmail = await AsyncStorage.getItem("loggedInEmail");
-
-      const { data, error } = await supabase
-        .from("attendeeProfile")
-        .select("email, firstName, lastName, linkedin, instagram, school, major, interests, profilePictureUrl")
-        .eq("email", savedEmail)
-        .single();
-
-      if (error) {
-        console.error(error);
+      if (authError || !authUser?.email) {
+        router.replace("/login");
         return;
       }
 
-      setUser({
-        email: data.email,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        linkedin: data.linkedin,
-        instagram: data.instagram,
-        school: data.school,
-        major: data.major, 
-        interests: data.interests,
-        profilePictureUrl: data.profilePictureUrl,
-      });
+      const normalizedEmail = authUser.email.trim().toLowerCase();
+
+      const { data: attendee, error: profileError } = await supabase
+        .from("attendeeProfile")
+        .select("*")
+        .eq("email", normalizedEmail)
+        .maybeSingle();
+
+      if (profileError || !attendee) {
+        console.error("Could not load attendee profile:", profileError);
+
+        await supabase.auth.signOut();
+        router.replace("/login");
+        return;
+      }
+
+      setUser(attendee);
     }
 
     loadUser();
-  }, []);
+  }, [router, setUser]);
   return (
     <ScrollView contentContainerStyle={{padding:24}}>
 
