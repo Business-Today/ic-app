@@ -71,7 +71,8 @@
       [
         "react-native-nfc-manager",
         {
-          "nfcPermission": "BT Conference uses NFC to tap attendee tags for conference check-in."
+          "nfcPermission": "BT Conference uses NFC to tap attendee tags for conference check-in.",
+          "includeNdefEntitlement": false
         }
       ]
     ],
