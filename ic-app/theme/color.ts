@@ -15,4 +15,10 @@ export const colors = {
   border: "#E5E7EB",
 
   gray100: "#F3F4F6",
+
+  // iOS-style neutral fills and label colors
+  fillSecondary: "#F2F2F7",
+  fillTertiary: "#E5E5EA",
+  labelSecondary: "#6E6E73",
+  labelTertiary: "#AEAEB2",
 };

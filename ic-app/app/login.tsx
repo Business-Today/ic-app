@@ -1,32 +1,74 @@
 import theme from "@/theme";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
+  Pressable,
+  StyleSheet,
   Text,
-  TextInput
+  TextInput,
+  View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import Button from "../components/Button";
 import { useUser } from "../contexts/UserContext";
 import { supabase } from "../lib/supabase";
 
+type Step = "welcome" | "email" | "code";
+
+const CODE_LENGTH = 6;
+
 export default function Login() {
+  const [step, setStep] = useState<Step>("welcome");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
-  const [codeSent, setCodeSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  const emailInputRef = useRef<TextInput>(null);
+  const otpInputRef = useRef<TextInput>(null);
 
   const router = useRouter();
   const { setUser } = useUser();
 
-  const sendLoginCode = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
 
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent, () =>
+      setKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(hideEvent, () =>
+      setKeyboardVisible(false)
+    );
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    // Give the screen a moment to render before pulling up the keyboard.
+    const timer = setTimeout(() => {
+      if (step === "email") emailInputRef.current?.focus();
+      if (step === "code") otpInputRef.current?.focus();
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [step]);
+
+  const sendLoginCode = async (isResend = false) => {
     if (!normalizedEmail) {
       Alert.alert("Missing email", "Enter your school email.");
       return;
@@ -84,13 +126,12 @@ export default function Login() {
         return;
       }
 
-      setCodeSent(true);
       setOtp("");
+      setStep("code");
 
-      Alert.alert(
-        "Code sent",
-        `We sent a six-digit sign-in code to ${normalizedEmail}.`
-      );
+      if (isResend) {
+        Alert.alert("Code sent", `We sent a new code to ${normalizedEmail}.`);
+      }
     } catch (error) {
       console.error("Unexpected OTP send error:", error);
 
@@ -103,11 +144,10 @@ export default function Login() {
     }
   };
 
-  const verifyLoginCode = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedOtp = otp.trim();
+  const verifyLoginCode = async (code: string) => {
+    const normalizedOtp = code.trim();
 
-    if (normalizedOtp.length !== 6) {
+    if (normalizedOtp.length !== CODE_LENGTH) {
       Alert.alert("Invalid code", "Enter the six-digit code from your email.");
       return;
     }
@@ -124,6 +164,8 @@ export default function Login() {
 
       if (authError || !authData.user) {
         console.error("OTP verification failed:", authError);
+
+        setOtp("");
 
         Alert.alert(
           "Invalid or expired code",
@@ -168,139 +210,338 @@ export default function Login() {
     }
   };
 
-  const resetLogin = () => {
-    setCodeSent(false);
-    setOtp("");
+  const handleOtpChange = (value: string) => {
+    const digits = value.replace(/[^0-9]/g, "").slice(0, CODE_LENGTH);
+    setOtp(digits);
+
+    if (digits.length === CODE_LENGTH && !loading) {
+      verifyLoginCode(digits);
+    }
   };
 
+  const goToEmail = () => {
+    setOtp("");
+    setStep("email");
+  };
+
+  if (step === "welcome") {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.welcomeLogoArea}>
+          <Image
+            source={require("../assets/images/businesstoday_logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
+
+        <View style={styles.welcomeActions}>
+          <Pressable
+            onPress={goToEmail}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && styles.primaryButtonPressed,
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>Sign Up</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={{ flex: 1 }}
-    >
-      <ScrollView
-        style={{ flex: 1, backgroundColor: "#FFFFFF" }}
-        contentContainerStyle={{
-          padding: 16,
-          marginTop: 100,
-          justifyContent: "center",
-          gap: 12,
-        }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.screen}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.flex}
       >
-        <Image
-          source={require("../assets/images/ic-logo.jpg")}
-          style={{
-            width: 120,
-            height: 160,
-            alignSelf: "center",
-            marginBottom: 20,
-          }}
-        />
+        {step === "email" ? (
+          <View style={styles.formContent}>
+            <View>
+              <Pressable
+                onPress={() => setStep("welcome")}
+                hitSlop={12}
+                disabled={loading}
+                style={styles.backButton}
+              >
+                <Ionicons
+                  name="chevron-back"
+                  size={32}
+                  color={theme.colors.primaryBlue}
+                />
+              </Pressable>
 
-        <Text
-          style={[
-            theme.typography.biggestTitle,
-            {
-              color: theme.colors.primaryBlue,
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}
-        >
-          Welcome to the IC App!
-        </Text>
+              <Text style={styles.title}>Email</Text>
 
-        {!codeSent ? (
-          <>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Enter school email"
-              placeholderTextColor="#999"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              editable={!loading}
-              onSubmitEditing={sendLoginCode}
-              style={{
-                borderWidth: 1,
-                borderColor: "#D1D5DB",
-                borderRadius: 10,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
-                marginBottom: 16,
+              <Text style={styles.description}>
+                Please enter the email you used for your Business Today
+                application.
+              </Text>
+            </View>
 
-                fontSize: 16,
-                letterSpacing: 0,
-                fontFamily: Platform.select({
-                  ios: "System",
-                  android: "Roboto",
-                }),
-              }}
-            />
+            <View>
+              <TextInput
+                ref={emailInputRef}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Email Address"
+                placeholderTextColor="#9CA3AF"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+                keyboardType="email-address"
+                returnKeyType="send"
+                editable={!loading}
+                onSubmitEditing={() => sendLoginCode()}
+                style={styles.underlineInput}
+              />
 
-            <Button
-              title={loading ? "Sending code..." : "Send login code"}
-              onPress={sendLoginCode}
-              disabled={loading}
-            />
-          </>
+              {!keyboardVisible && (
+                <Pressable
+                  onPress={() => sendLoginCode()}
+                  disabled={loading || !normalizedEmail}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    styles.continueButton,
+                    (loading || !normalizedEmail) &&
+                      styles.primaryButtonDisabled,
+                    pressed && styles.primaryButtonPressed,
+                  ]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>Continue</Text>
+                  )}
+                </Pressable>
+              )}
+            </View>
+          </View>
         ) : (
-          <>
-            <Text
-              style={[
-                theme.typography.body,
-                {
-                  color: theme.colors.primaryDarkGray,
-                  textAlign: "center",
-                  marginBottom: 4,
-                },
-              ]}
-            >
-              Enter the six-digit code sent to {email.trim().toLowerCase()}.
-            </Text>
+          <View style={styles.formContent}>
+            <View>
+              <Pressable
+                onPress={goToEmail}
+                hitSlop={12}
+                disabled={loading}
+                style={styles.backButton}
+              >
+                <Ionicons
+                  name="chevron-back"
+                  size={32}
+                  color={theme.colors.primaryBlue}
+                />
+              </Pressable>
 
-            <TextInput
-              value={otp}
-              onChangeText={(value) =>
-                setOtp(value.replace(/[^0-9]/g, "").slice(0, 6))
-              }
-              placeholder="123456"
-              placeholderTextColor="#999"
-              keyboardType="number-pad"
-              maxLength={6}
-              editable={!loading}
-              autoFocus
-              onSubmitEditing={verifyLoginCode}
-              style={{
-                borderWidth: 1,
-                borderColor: "#D1D5DB",
-                borderRadius: 10,
-                padding: 12,
-                textAlign: "center",
-                fontSize: 22,
-                letterSpacing: 8,
-                marginBottom: 16,
-              }}
-            />
+              <Text style={styles.title}>Verification Code</Text>
 
-            <Button
-              title={loading ? "Verifying..." : "Sign in"}
-              onPress={verifyLoginCode}
-              disabled={loading}
-            />
+              <Text style={styles.description}>
+                Please enter the verification code sent to{" "}
+                <Text style={styles.descriptionEmphasis}>{normalizedEmail}</Text>
+              </Text>
+            </View>
 
-            <Button
-              title="Use a different email"
-              variant="secondary"
-              onPress={resetLogin}
-              disabled={loading}
-            />
-          </>
+            <View style={styles.codeSection}>
+              <Pressable
+                onPress={() => otpInputRef.current?.focus()}
+                style={styles.codeBoxes}
+              >
+                {Array.from({ length: CODE_LENGTH }).map((_, index) => {
+                  const digit = otp[index] ?? "";
+                  const isActive = index === otp.length;
+
+                  return (
+                    <View
+                      key={index}
+                      style={[
+                        styles.codeBox,
+                        isActive && styles.codeBoxActive,
+                      ]}
+                    >
+                      <Text style={styles.codeDigit}>{digit}</Text>
+                    </View>
+                  );
+                })}
+              </Pressable>
+
+              {/* Hidden input that actually receives the keyboard. */}
+              <TextInput
+                ref={otpInputRef}
+                value={otp}
+                onChangeText={handleOtpChange}
+                keyboardType="number-pad"
+                textContentType="oneTimeCode"
+                autoComplete="one-time-code"
+                maxLength={CODE_LENGTH}
+                editable={!loading}
+                caretHidden
+                style={styles.hiddenInput}
+              />
+
+              {loading ? (
+                <ActivityIndicator
+                  color={theme.colors.primaryBlue}
+                  style={styles.resendButton}
+                />
+              ) : (
+                <Pressable
+                  onPress={() => sendLoginCode(true)}
+                  hitSlop={12}
+                  style={styles.resendButton}
+                >
+                  <Text style={styles.resendText}>Resend Code</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
+
+const LOGO_ASPECT_RATIO = 1500 / 206;
+
+const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
+
+  screen: {
+    flex: 1,
+    backgroundColor: theme.colors.backgroundWhite,
+  },
+
+  // Welcome step
+  welcomeLogoArea: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+  },
+
+  logo: {
+    width: 220,
+    height: 220 / LOGO_ASPECT_RATIO,
+  },
+
+  welcomeActions: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+
+  primaryButton: {
+    backgroundColor: theme.colors.primaryBlue,
+    borderRadius: 38,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  primaryButtonPressed: {
+    opacity: 0.85,
+  },
+
+  primaryButtonDisabled: {
+    opacity: 0.4,
+  },
+
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  // Email + code steps
+  formContent: {
+    flex: 1,
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+
+  backButton: {
+    alignSelf: "flex-start",
+    marginLeft: -8,
+    marginBottom: 32,
+  },
+
+  title: {
+    ...theme.typography.title,
+    fontSize: 28,
+    color: theme.colors.primaryBlue,
+    marginBottom: 12,
+  },
+
+  description: {
+    ...theme.typography.body,
+    color: theme.colors.textPrimary,
+    lineHeight: 22,
+  },
+
+  descriptionEmphasis: {
+    fontWeight: "700",
+  },
+
+  underlineInput: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.textPrimary,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: theme.colors.textPrimary,
+  },
+
+  continueButton: {
+    marginTop: 24,
+  },
+
+  codeSection: {
+    alignItems: "center",
+    gap: 20,
+  },
+
+  codeBoxes: {
+    flexDirection: "row",
+    alignSelf: "stretch",
+    gap: 10,
+  },
+
+  codeBox: {
+    flex: 1,
+    height: 80,
+    borderRadius: 16,
+    backgroundColor: "#D9D9D9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  codeBoxActive: {
+    borderWidth: 2,
+    borderColor: theme.colors.primaryBlue,
+  },
+
+  codeDigit: {
+    fontSize: 24,
+    fontWeight: "600",
+    color: theme.colors.textPrimary,
+  },
+
+  hiddenInput: {
+    position: "absolute",
+    opacity: 0,
+    width: 1,
+    height: 1,
+  },
+
+  resendButton: {
+    paddingVertical: 4,
+  },
+
+  resendText: {
+    color: theme.colors.primaryDarkGray,
+    fontSize: 15,
+  },
+});

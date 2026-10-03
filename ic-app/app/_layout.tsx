@@ -101,6 +101,14 @@ function AuthGate() {
       />
 
       <Stack.Screen
+        name="attendance"
+        options={{
+          title: "Attendance",
+          headerBackTitle: "Back",
+        }}
+      />
+
+      <Stack.Screen
         name="attendeeAttendance"
         options={{
           title: "",

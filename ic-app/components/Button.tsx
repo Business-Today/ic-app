@@ -39,7 +39,7 @@ export default function Button({
 const styles = StyleSheet.create({
   button: {
     backgroundColor: theme.colors.primaryBlue,
-    padding: 14,
+    padding: 20,
     borderRadius: 12,
     marginTop: 10,
   },

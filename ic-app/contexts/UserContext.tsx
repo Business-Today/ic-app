@@ -10,6 +10,7 @@ type User = {
   major: string; 
   interests: string;
   profilePictureUrl: string;
+  groupNumber?: number | null;
 };
 
 type ScheduleEvent = {

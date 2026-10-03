@@ -1,5 +1,4 @@
-import Button from "@/components/Button";
-import Card from "@/components/Card";
+import SymbolIcon from "@/components/SymbolIcon";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
@@ -7,13 +6,14 @@ import {
   Alert,
   Image,
   Linking,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useUser } from "../../contexts/UserContext";
 import { supabase } from "../../lib/supabase";
 import theme from "../../theme";
@@ -258,311 +258,481 @@ export default function Profile() {
     router.replace("/login");
   }
 
-  return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      automaticallyAdjustKeyboardInsets
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      <Text
-        style={[
-          theme.typography.biggestTitle,
-          {
-            color: theme.colors.primaryBlue,
-            textAlign: "center",
-          },
-        ]}
-      >
-        {user?.firstName ?? "Your"}&apos;s Profile
-      </Text>
+  function cancelEdit() {
+    setFirstName(user?.firstName ?? "");
+    setLastName(user?.lastName ?? "");
+    setSchool(user?.school ?? "");
+    setMajor(user?.major ?? "");
+    setInterests(user?.interests ?? "");
+    setLinkedin(user?.linkedin ?? "");
+    setInstagram(user?.instagram ?? "");
+    setMode("view");
+  }
 
-      <Text
-        style={[
-          theme.typography.body,
-          {
-            color: theme.colors.primaryDarkGray,
-            textAlign: "center",
-            marginBottom: 16,
-          },
-        ]}
-      >
-        This profile will be shared with others when you exchange QR codes.
-        Select the button below to edit it.
-      </Text>
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+  const subtitle = [school, major].filter(Boolean).join(" · ");
 
-      <Button
-        title={
-          mode === "edit"
-            ? isSaving
-              ? "Saving..."
-              : "Save"
-            : "Edit Profile"
+  type Row = {
+    key: string;
+    label: string;
+    value: string;
+    placeholder: string;
+    symbol: Parameters<typeof SymbolIcon>[0]["name"];
+    fallback: Parameters<typeof SymbolIcon>[0]["fallback"];
+    tint: string;
+    tintBackground: string;
+    onPress: () => void;
+  };
+
+  const rows: Row[] = [
+    {
+      key: "interests",
+      label: "Interests",
+      value: interests,
+      placeholder: "Add your interests",
+      symbol: "sparkles",
+      fallback: "sparkles-outline",
+      tint: "#F5A623",
+      tintBackground: "#FFF3DD",
+      onPress: () => setMode("edit"),
+    },
+    {
+      key: "linkedin",
+      label: "LinkedIn",
+      value: linkedin,
+      placeholder: "Add your LinkedIn",
+      symbol: "link",
+      fallback: "logo-linkedin",
+      tint: "#0A66C2",
+      tintBackground: "#E3EEFA",
+      onPress: () => {
+        if (linkedin) {
+          void openProfileLink(linkedin, "LinkedIn");
+        } else {
+          setMode("edit");
         }
-        selected={mode === "edit"}
-        variant="secondary"
-        onPress={() => {
-          if (mode === "edit") {
-            void saveProfile();
-          } else {
-            setMode("edit");
-          }
-        }}
-      />
+      },
+    },
+    {
+      key: "instagram",
+      label: "Instagram",
+      value: instagram,
+      placeholder: "Add your Instagram",
+      symbol: "camera",
+      fallback: "logo-instagram",
+      tint: "#E1306C",
+      tintBackground: "#FCE4EC",
+      onPress: () => {
+        if (instagram) {
+          void openProfileLink(instagram, "Instagram");
+        } else {
+          setMode("edit");
+        }
+      },
+    },
+  ];
 
-      <Card>
-        {mode === "edit" ? (
-          <>
-            <View style={styles.editPhotoSection}>
-              <TouchableOpacity
-                onPress={choosePhoto}
-                disabled={isUploading}
-                activeOpacity={0.75}
-              >
-                <Image
-                  source={{ uri: profileImageUrl }}
-                  style={[
-                    styles.editProfileImage,
-                    isUploading && styles.uploadingImage,
-                  ]}
-                />
-              </TouchableOpacity>
-
-              <Text
-                style={[
-                  theme.typography.caption,
-                  {
-                    color: theme.colors.primaryDarkGray,
-                    marginTop: 8,
-                  },
-                ]}
-              >
-                {isUploading ? "Uploading photo..." : "Tap photo to change"}
-              </Text>
-            </View>
-
-            <TextInput
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder="First Name"
-              placeholderTextColor="#999"
-              autoCapitalize="words"
-              style={styles.input}
-            />
-
-            <TextInput
-              value={lastName}
-              onChangeText={setLastName}
-              placeholder="Last Name"
-              placeholderTextColor="#999"
-              autoCapitalize="words"
-              style={styles.input}
-            />
-
-            <TextInput
-              value={school}
-              onChangeText={setSchool}
-              placeholder="School"
-              placeholderTextColor="#999"
-              autoCapitalize="words"
-              style={styles.input}
-            />
-
-            <TextInput
-              value={major}
-              onChangeText={setMajor}
-              placeholder="Major"
-              placeholderTextColor="#999"
-              autoCapitalize="words"
-              style={styles.input}
-            />
-
-            <TextInput
-              value={interests}
-              onChangeText={setInterests}
-              placeholder="Interests"
-              placeholderTextColor="#999"
-              multiline
-              autoCapitalize="sentences"
-              style={[styles.input, styles.multilineInput]}
-            />
-
-            <TextInput
-              value={linkedin}
-              onChangeText={setLinkedin}
-              placeholder="LinkedIn URL"
-              placeholderTextColor="#999"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              style={styles.input}
-            />
-
-            <TextInput
-              value={instagram}
-              onChangeText={setInstagram}
-              placeholder="Instagram URL"
-              placeholderTextColor="#999"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              style={styles.input}
-            />
-          </>
-        ) : (
-          <>
-            <View style={styles.profileHeader}>
-              <View style={styles.profileText}>
-                <Text
-                  style={[
-                    theme.typography.title,
-                    {
-                      color: theme.colors.primaryBlue,
-                      marginBottom: 8,
-                    },
-                  ]}
-                >
-                  {firstName} {lastName}
-                </Text>
-
-                <Text
-                  style={[
-                    theme.typography.sectionTitle,
-                    {
-                      color: theme.colors.primaryDarkGray,
-                      marginBottom: 6,
-                    },
-                  ]}
-                >
-                  {school || "School not added"}
-                </Text>
-
-                <Text
-                  style={[
-                    theme.typography.body,
-                    {
-                      color: theme.colors.primaryDarkGray,
-                    },
-                  ]}
-                >
-                  {major || "Major not added"}
-                </Text>
-              </View>
-
-              <Image
-                source={{ uri: profileImageUrl }}
-                style={styles.viewProfileImage}
-              />
-            </View>
-
-            <Text
-              style={[
-                theme.typography.body,
-                {
-                  color: theme.colors.primaryDarkGray,
-                  marginBottom: 12,
-                },
+  function renderView() {
+    return (
+      <>
+        <View style={styles.group}>
+          {rows.map((row, index) => (
+            <Pressable
+              key={row.key}
+              onPress={row.onPress}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.row,
+                index < rows.length - 1 && styles.rowDivider,
+                pressed && styles.pressed,
               ]}
             >
-              Interests: {interests || "Not added yet"}
-            </Text>
-
-            <View style={styles.socialButtons}>
-              <View style={styles.socialButton}>
-                <Button
-                  title={linkedin ? "LinkedIn" : "Add LinkedIn"}
-                  onPress={() => {
-                    if (linkedin) {
-                      void openProfileLink(linkedin, "LinkedIn");
-                    } else {
-                      setMode("edit");
-                    }
-                  }}
+              <View
+                style={[styles.iconTile, { backgroundColor: row.tintBackground }]}
+              >
+                <SymbolIcon
+                  name={row.symbol}
+                  fallback={row.fallback}
+                  size={18}
+                  weight="semibold"
+                  color={row.tint}
                 />
               </View>
 
-              <View style={styles.socialButton}>
-                <Button
-                  title={instagram ? "Instagram" : "Add Instagram"}
-                  onPress={() => {
-                    if (instagram) {
-                      void openProfileLink(instagram, "Instagram");
-                    } else {
-                      setMode("edit");
-                    }
-                  }}
-                />
+              <View style={styles.rowText}>
+                <Text style={styles.rowLabel}>{row.label}</Text>
+                <Text
+                  style={[styles.rowValue, !row.value && styles.rowPlaceholder]}
+                  numberOfLines={2}
+                >
+                  {row.value || row.placeholder}
+                </Text>
               </View>
+
+              <SymbolIcon
+                name="chevron.right"
+                fallback="chevron-forward"
+                size={14}
+                weight="semibold"
+                color={theme.colors.labelTertiary}
+              />
+            </Pressable>
+          ))}
+        </View>
+
+        <Pressable
+          onPress={() => setMode("edit")}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.secondaryButtonText}>Edit Profile</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => void handleLogout()}
+          accessibilityRole="button"
+          hitSlop={8}
+          style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}
+        >
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </Pressable>
+      </>
+    );
+  }
+
+  const fields: {
+    key: string;
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    props?: React.ComponentProps<typeof TextInput>;
+  }[] = [
+    {
+      key: "firstName",
+      label: "First name",
+      value: firstName,
+      onChange: setFirstName,
+      props: { autoCapitalize: "words" },
+    },
+    {
+      key: "lastName",
+      label: "Last name",
+      value: lastName,
+      onChange: setLastName,
+      props: { autoCapitalize: "words" },
+    },
+    {
+      key: "school",
+      label: "School",
+      value: school,
+      onChange: setSchool,
+      props: { autoCapitalize: "words" },
+    },
+    {
+      key: "major",
+      label: "Major",
+      value: major,
+      onChange: setMajor,
+      props: { autoCapitalize: "words" },
+    },
+    {
+      key: "interests",
+      label: "Interests",
+      value: interests,
+      onChange: setInterests,
+      props: { autoCapitalize: "sentences", multiline: true },
+    },
+    {
+      key: "linkedin",
+      label: "LinkedIn",
+      value: linkedin,
+      onChange: setLinkedin,
+      props: {
+        autoCapitalize: "none",
+        autoCorrect: false,
+        keyboardType: "url",
+        placeholder: "linkedin.com/in/you",
+      },
+    },
+    {
+      key: "instagram",
+      label: "Instagram",
+      value: instagram,
+      onChange: setInstagram,
+      props: {
+        autoCapitalize: "none",
+        autoCorrect: false,
+        keyboardType: "url",
+        placeholder: "instagram.com/you",
+      },
+    },
+  ];
+
+  function renderEdit() {
+    return (
+      <>
+        <View style={styles.group}>
+          {fields.map((field, index) => (
+            <View
+              key={field.key}
+              style={[
+                styles.fieldRow,
+                index < fields.length - 1 && styles.rowDivider,
+              ]}
+            >
+              <Text style={styles.fieldLabel}>{field.label}</Text>
+              <TextInput
+                value={field.value}
+                onChangeText={field.onChange}
+                placeholderTextColor={theme.colors.labelTertiary}
+                style={[
+                  styles.fieldInput,
+                  field.props?.multiline && styles.fieldInputMultiline,
+                ]}
+                {...field.props}
+              />
             </View>
-          </>
-        )}
-      </Card>
+          ))}
+        </View>
 
-      <Button
-        title="Sign Out"
-        variant="secondary"
-        onPress={() => {
-          void handleLogout();
-        }}
-      />
-    </ScrollView>
+        <Pressable
+          onPress={() => void saveProfile()}
+          disabled={isSaving}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.primaryButton,
+            (pressed || isSaving) && styles.pressed,
+          ]}
+        >
+          <Text style={styles.primaryButtonText}>
+            {isSaving ? "Saving..." : "Save"}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={cancelEdit}
+          disabled={isSaving}
+          accessibilityRole="button"
+          hitSlop={8}
+          style={({ pressed }) => [styles.signOut, pressed && styles.pressed]}
+        >
+          <Text style={styles.cancelText}>Cancel</Text>
+        </Pressable>
+      </>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.pageTitle}>Profile</Text>
+
+        <View style={styles.hero}>
+          <Pressable
+            onPress={choosePhoto}
+            disabled={isUploading}
+            accessibilityRole="button"
+            accessibilityLabel="Change profile photo"
+            style={styles.avatarWrapper}
+          >
+            <Image
+              source={{ uri: profileImageUrl }}
+              style={[styles.avatar, isUploading && styles.avatarUploading]}
+            />
+            <View style={styles.avatarBadge}>
+              <SymbolIcon
+                name="camera.fill"
+                fallback="camera"
+                size={14}
+                weight="semibold"
+                color="#FFFFFF"
+              />
+            </View>
+          </Pressable>
+
+          <Text style={styles.name}>{fullName || "Your name"}</Text>
+          <Text style={styles.subtitle}>
+            {isUploading
+              ? "Uploading photo..."
+              : subtitle || "Add your school and major"}
+          </Text>
+        </View>
+
+        {mode === "edit" ? renderEdit() : renderView()}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
+
+const AVATAR_SIZE = 108;
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.colors.backgroundWhite,
   },
   content: {
-    padding: 16,
-    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 48,
   },
-  profileHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 12,
+  pageTitle: {
+    fontSize: 34,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    color: theme.colors.textPrimary,
   },
-  profileText: {
-    flex: 1,
-    paddingRight: 14,
-  },
-  viewProfileImage: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-  },
-  editPhotoSection: {
+  hero: {
     alignItems: "center",
+    paddingTop: 28,
+    paddingBottom: 28,
+  },
+  avatarWrapper: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
     marginBottom: 16,
   },
-  editProfileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+  avatar: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: theme.colors.fillSecondary,
   },
-  uploadingImage: {
+  avatarUploading: {
     opacity: 0.5,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
-    color: theme.colors.primaryDarkGray,
+  avatarBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primaryBlue,
+    borderWidth: 3,
+    borderColor: theme.colors.backgroundWhite,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  multilineInput: {
-    minHeight: 84,
+  name: {
+    fontSize: 26,
+    fontWeight: "700",
+    letterSpacing: -0.4,
+    color: theme.colors.textPrimary,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: theme.colors.labelSecondary,
+    marginTop: 4,
+    textAlign: "center",
+  },
+  group: {
+    backgroundColor: theme.colors.fillSecondary,
+    borderRadius: 20,
+    overflow: "hidden",
+    marginBottom: 16,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 14,
+  },
+  rowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(60,60,67,0.18)",
+  },
+  iconTile: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowText: {
+    flex: 1,
+  },
+  rowLabel: {
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: -0.3,
+    color: theme.colors.textPrimary,
+  },
+  rowValue: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: theme.colors.labelSecondary,
+    marginTop: 2,
+  },
+  rowPlaceholder: {
+    color: theme.colors.labelTertiary,
+  },
+  fieldRow: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: -0.1,
+    color: theme.colors.labelSecondary,
+    marginBottom: 4,
+  },
+  fieldInput: {
+    fontSize: 17,
+    color: theme.colors.textPrimary,
+    padding: 0,
+  },
+  fieldInputMultiline: {
+    minHeight: 60,
     textAlignVertical: "top",
   },
-  socialButtons: {
-    flexDirection: "row",
-    gap: 10,
+  primaryButton: {
+    backgroundColor: theme.colors.primaryBlue,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
   },
-  socialButton: {
-    flex: 1,
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: -0.3,
+  },
+  secondaryButton: {
+    backgroundColor: theme.colors.fillSecondary,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  secondaryButtonText: {
+    color: theme.colors.primaryBlue,
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: -0.3,
+  },
+  signOut: {
+    alignItems: "center",
+    paddingVertical: 20,
+  },
+  signOutText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#D0342C",
+  },
+  cancelText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: theme.colors.labelSecondary,
+  },
+  pressed: {
+    opacity: 0.7,
   },
 });

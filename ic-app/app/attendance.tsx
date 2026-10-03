@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import RNPickerSelect from "react-native-picker-select";
 import Toast from "react-native-toast-message";
-import Button from "../../components/Button";
-import theme from "../../theme";
+import Button from "../components/Button";
+import theme from "../theme";
 
 
 export default function Attendance() {
@@ -306,16 +306,6 @@ const lastScannedRef = useRef<{ email: string; time: number } | null>(null);
   )};
   return (
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center", marginBottom: 16, paddingHorizontal: 16}}>
-      <Text
-          style={[
-            theme.typography.biggestTitle,
-            {
-              color: theme.colors.primaryBlue,
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}
-        >Attendance</Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
                 {["day1", "day2", "day3"].map((day) => (
                   <View key={day} style={{ flex: 1 }}>
