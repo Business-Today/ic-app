@@ -125,6 +125,22 @@ function AuthGate() {
       />
 
       <Stack.Screen
+        name="nfcCheckIn"
+        options={{
+          title: "",
+          headerBackTitle: "Back",
+        }}
+      />
+
+      <Stack.Screen
+        name="assignNfcTag"
+        options={{
+          title: "",
+          headerBackTitle: "Back",
+        }}
+      />
+
+      <Stack.Screen
         name="modal"
         options={{
           presentation: "modal",

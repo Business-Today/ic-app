@@ -13,7 +13,8 @@
       "bundleIdentifier": "org.businesstoday.ic",
       "infoPlist": {
         "NSCameraUsageDescription": "BT Conference uses your camera to scan QR codes for conference check-in and to take a profile photo for your attendee profile.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NFCReaderUsageDescription": "BT Conference uses NFC to tap attendee tags for conference check-in."
       }
     },
     "android": {
@@ -65,6 +66,12 @@
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true
           }
+        }
+      ],
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "BT Conference uses NFC to tap attendee tags for conference check-in."
         }
       ]
     ],

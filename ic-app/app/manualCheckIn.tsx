@@ -1,4 +1,5 @@
 import Button from "@/components/Button";
+import { checkInAttendee } from "@/lib/attendance";
 import { supabase } from "@/lib/supabase";
 import theme from "@/theme";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -53,46 +54,49 @@ export default function SearchAttendee() {
   }
 
   async function checkIn(attendee: Attendee) {
-    const { data: eventAttendance, error } = await supabase
-      .from("scheduleOptions")
-      .select("optionID, emails")
-      .eq("optionID", selectedEvent)
-      .single();
+    const result = await checkInAttendee(selectedEvent, attendee.email, { manual: true });
 
-    if (error) {
-      console.log(error);
-      return;
+    switch (result.status) {
+      case "checked_in":
+        Toast.show({
+          type: "success",
+          text1: `${attendee.firstName} ${attendee.lastName} checked in`,
+          position: "bottom",
+          visibilityTime: 1000,
+        });
+        return;
+      case "already_checked_in":
+        Toast.show({
+          type: "info",
+          text1: `${attendee.firstName} ${attendee.lastName} is already checked in`,
+          position: "bottom",
+          visibilityTime: 1500,
+        });
+        return;
+      case "not_registered_for_seminar":
+        Toast.show({
+          type: "error",
+          text1: "Attendee not registered for this seminar",
+          position: "bottom",
+          visibilityTime: 2000,
+        });
+        return;
+      case "no_profile":
+        Toast.show({
+          type: "error",
+          text1: "No profile found for this attendee",
+          position: "bottom",
+          visibilityTime: 2000,
+        });
+        return;
+      default:
+        Toast.show({
+          type: "error",
+          text1: result.message || "Could not check in attendee",
+          position: "bottom",
+          visibilityTime: 2000,
+        });
     }
-
-    if (eventAttendance) {
-      const emails = eventAttendance.emails?.split(",").map((e: string) => e.trim()) || [];
-      if (!emails.includes(attendee.email)) {
-        emails.push(attendee.email);
-        await supabase
-          .from("scheduleOptions")
-          .update({ emails: emails.join(", ") })
-          .eq("optionID", selectedEvent);
-      }
-    }
-     const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-    const { error: historyError } = await supabase
-          .from("attendanceHistory")
-          .insert({
-            eventID: selectedEvent,
-            scannedByEmail: user.email.trim().toLowerCase(),
-            attendeeEmail: attendee.email.trim().toLowerCase(),
-            action: "check_in",
-            manual: true,
-          });
-    Toast.show({
-            type: "success",
-            text1: `${attendee.firstName} ${attendee.lastName} checked in`,
-            position: "bottom",
-            visibilityTime: 1000,
-            });
   }
 
   return (
