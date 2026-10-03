@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import type { ReactNode } from "react";
+import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 
 import theme from "@/theme";
 
@@ -11,6 +12,8 @@ type Props<T extends string> = {
   tabs: SegmentedTab<T>[];
   value: T;
   onChange: (key: T) => void;
+  /** Optional extra content rendered after the pills, inside the same bar. */
+  trailing?: ReactNode;
 };
 
 /**
@@ -21,9 +24,15 @@ export default function SegmentedTabs<T extends string>({
   tabs,
   value,
   onChange,
+  trailing,
 }: Props<T>) {
   return (
-    <View style={styles.row}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.bleed}
+      contentContainerStyle={styles.row}
+    >
       {tabs.map((tab) => {
         const selected = tab.key === value;
 
@@ -45,14 +54,21 @@ export default function SegmentedTabs<T extends string>({
           </Pressable>
         );
       })}
-    </View>
+      {trailing}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  // Let the bar scroll edge to edge while the page keeps its 20pt gutters.
+  bleed: {
+    marginHorizontal: -20,
+  },
   row: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 10,
+    paddingHorizontal: 20,
   },
   pill: {
     paddingHorizontal: 18,

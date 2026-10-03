@@ -536,34 +536,33 @@ export default function Home() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerRow}>
-          <Text style={styles.pageTitle}>Home</Text>
-
-          {canTakeAttendance ? (
-            <Pressable
-              onPress={() => router.push("/attendance")}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.attendanceButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <SymbolIcon
-                name="qrcode.viewfinder"
-                fallback="qr-code-outline"
-                size={18}
-                weight="semibold"
-                color={theme.colors.primaryBlue}
-              />
-              <Text style={styles.attendanceButtonText}>Attendance</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        <Text style={styles.pageTitle}>Home</Text>
 
         <SegmentedTabs
           tabs={HOME_TABS}
           value={activeTab}
           onChange={setActiveTab}
+          trailing={
+            canTakeAttendance ? (
+              <Pressable
+                onPress={() => router.push("/attendance")}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.attendanceButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <SymbolIcon
+                  name="qrcode.viewfinder"
+                  fallback="qr-code-outline"
+                  size={16}
+                  weight="semibold"
+                  color={theme.colors.primaryBlue}
+                />
+                <Text style={styles.attendanceButtonText}>Attendance</Text>
+              </Pressable>
+            ) : null
+          }
         />
 
         <View style={styles.tabContent}>
@@ -586,17 +585,12 @@ const styles = StyleSheet.create({
     paddingTop: 40,
     paddingBottom: 40,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 20,
-  },
   pageTitle: {
-    fontSize: 34,
+    fontSize: 29,
     fontWeight: "700",
     letterSpacing: 0.4,
     color: theme.colors.textPrimary,
+    marginBottom: 20,
   },
   attendanceButton: {
     flexDirection: "row",

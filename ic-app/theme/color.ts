@@ -21,4 +21,6 @@ export const colors = {
   fillTertiary: "#E5E5EA",
   labelSecondary: "#6E6E73",
   labelTertiary: "#AEAEB2",
+
+  destructive: "#D0342C",
 };

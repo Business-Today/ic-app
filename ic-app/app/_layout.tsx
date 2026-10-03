@@ -5,8 +5,15 @@ import { ActivityIndicator, View } from "react-native";
 import "react-native-reanimated";
 import Toast from "react-native-toast-message";
 
+import HeaderBackButton from "../components/HeaderBackButton";
 import { UserProvider } from "../contexts/UserContext";
 import { supabase } from "../lib/supabase";
+
+// The attendance screens draw their own back chevron and title, so the
+// native (glass) header stays out of the way entirely.
+const attendanceScreenOptions = {
+  headerShown: false,
+};
 
 function AuthGate() {
   const router = useRouter();
@@ -88,6 +95,9 @@ function AuthGate() {
         headerStyle: { backgroundColor: "#FFFFFF" },
         headerTintColor: "#111827",
         contentStyle: { backgroundColor: "#FFFFFF" },
+        // Any remaining native header uses the login flow's chevron.
+        headerBackVisible: false,
+        headerLeft: () => <HeaderBackButton />,
       }}
     >
       <Stack.Screen
@@ -100,37 +110,19 @@ function AuthGate() {
         options={{ headerShown: false }}
       />
 
-      <Stack.Screen
-        name="attendance"
-        options={{
-          title: "Attendance",
-          headerBackTitle: "Back",
-        }}
-      />
+      <Stack.Screen name="attendance" options={attendanceScreenOptions} />
 
-      <Stack.Screen
-        name="attendeeAttendance"
-        options={{
-          title: "",
-          headerBackTitle: "Back",
-        }}
-      />
+      <Stack.Screen name="attendanceRecords" options={attendanceScreenOptions} />
 
-      <Stack.Screen
-        name="attendanceRecords"
-        options={{
-          title: "",
-          headerBackTitle: "Back",
-        }}
-      />
+      <Stack.Screen name="attendeeAttendance" options={attendanceScreenOptions} />
 
-      <Stack.Screen
-        name="manualCheckIn"
-        options={{
-          title: "",
-          headerBackTitle: "Back",
-        }}
-      />
+      <Stack.Screen name="attendeeDetail" options={attendanceScreenOptions} />
+
+      <Stack.Screen name="manualCheckIn" options={attendanceScreenOptions} />
+
+      <Stack.Screen name="nfcCheckIn" options={attendanceScreenOptions} />
+
+      <Stack.Screen name="assignNfcTag" options={attendanceScreenOptions} />
 
       <Stack.Screen
         name="modal"

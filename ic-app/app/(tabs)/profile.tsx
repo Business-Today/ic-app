@@ -277,10 +277,6 @@ export default function Profile() {
     label: string;
     value: string;
     placeholder: string;
-    symbol: Parameters<typeof SymbolIcon>[0]["name"];
-    fallback: Parameters<typeof SymbolIcon>[0]["fallback"];
-    tint: string;
-    tintBackground: string;
     onPress: () => void;
   };
 
@@ -290,10 +286,6 @@ export default function Profile() {
       label: "Interests",
       value: interests,
       placeholder: "Add your interests",
-      symbol: "sparkles",
-      fallback: "sparkles-outline",
-      tint: "#F5A623",
-      tintBackground: "#FFF3DD",
       onPress: () => setMode("edit"),
     },
     {
@@ -301,10 +293,6 @@ export default function Profile() {
       label: "LinkedIn",
       value: linkedin,
       placeholder: "Add your LinkedIn",
-      symbol: "link",
-      fallback: "logo-linkedin",
-      tint: "#0A66C2",
-      tintBackground: "#E3EEFA",
       onPress: () => {
         if (linkedin) {
           void openProfileLink(linkedin, "LinkedIn");
@@ -318,10 +306,6 @@ export default function Profile() {
       label: "Instagram",
       value: instagram,
       placeholder: "Add your Instagram",
-      symbol: "camera",
-      fallback: "logo-instagram",
-      tint: "#E1306C",
-      tintBackground: "#FCE4EC",
       onPress: () => {
         if (instagram) {
           void openProfileLink(instagram, "Instagram");
@@ -347,18 +331,6 @@ export default function Profile() {
                 pressed && styles.pressed,
               ]}
             >
-              <View
-                style={[styles.iconTile, { backgroundColor: row.tintBackground }]}
-              >
-                <SymbolIcon
-                  name={row.symbol}
-                  fallback={row.fallback}
-                  size={18}
-                  weight="semibold"
-                  color={row.tint}
-                />
-              </View>
-
               <View style={styles.rowText}>
                 <Text style={styles.rowLabel}>{row.label}</Text>
                 <Text
@@ -379,14 +351,6 @@ export default function Profile() {
             </Pressable>
           ))}
         </View>
-
-        <Pressable
-          onPress={() => setMode("edit")}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.secondaryButtonText}>Edit Profile</Text>
-        </Pressable>
 
         <Pressable
           onPress={() => void handleLogout()}
@@ -531,8 +495,6 @@ export default function Profile() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.pageTitle}>Profile</Text>
-
         <View style={styles.hero}>
           <Pressable
             onPress={choosePhoto}
@@ -556,12 +518,20 @@ export default function Profile() {
             </View>
           </Pressable>
 
-          <Text style={styles.name}>{fullName || "Your name"}</Text>
-          <Text style={styles.subtitle}>
-            {isUploading
-              ? "Uploading photo..."
-              : subtitle || "Add your school and major"}
-          </Text>
+          <Pressable
+            onPress={() => setMode("edit")}
+            disabled={mode === "edit"}
+            accessibilityRole="button"
+            accessibilityLabel="Edit profile details"
+            style={({ pressed }) => [styles.heroText, pressed && styles.pressed]}
+          >
+            <Text style={styles.name}>{fullName || "Your name"}</Text>
+            <Text style={styles.subtitle}>
+              {isUploading
+                ? "Uploading photo..."
+                : subtitle || "Add your school and major"}
+            </Text>
+          </Pressable>
         </View>
 
         {mode === "edit" ? renderEdit() : renderView()}
@@ -582,15 +552,9 @@ const styles = StyleSheet.create({
     paddingTop: 40,
     paddingBottom: 48,
   },
-  pageTitle: {
-    fontSize: 34,
-    fontWeight: "700",
-    letterSpacing: 0.4,
-    color: theme.colors.textPrimary,
-  },
   hero: {
     alignItems: "center",
-    paddingTop: 28,
+    paddingTop: 16,
     paddingBottom: 28,
   },
   avatarWrapper: {
@@ -649,13 +613,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(60,60,67,0.18)",
   },
-  iconTile: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   rowText: {
     flex: 1,
   },
@@ -706,17 +663,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: -0.3,
   },
-  secondaryButton: {
-    backgroundColor: theme.colors.fillSecondary,
-    borderRadius: 16,
-    paddingVertical: 16,
+  heroText: {
     alignItems: "center",
-  },
-  secondaryButtonText: {
-    color: theme.colors.primaryBlue,
-    fontSize: 17,
-    fontWeight: "600",
-    letterSpacing: -0.3,
   },
   signOut: {
     alignItems: "center",

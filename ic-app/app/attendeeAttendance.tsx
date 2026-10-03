@@ -1,193 +1,110 @@
-import { View, Text, TextInput, FlatList } from "react-native";
-import Button from "@/components/Button"
+import { useRouter } from "expo-router";
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { Stack, useRouter } from "expo-router";
+import { FlatList, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import Avatar from "@/components/Avatar";
+import ListRow from "@/components/ListRow";
+import PageHeader from "@/components/PageHeader";
+import SearchField from "@/components/SearchField";
+import { useAttendeeSearch } from "@/hooks/useAttendeeSearch";
+import { fullName, searchAttendees } from "@/lib/attendance";
 import theme from "@/theme";
-import Card from "@/components/Card";
-import { useLocalSearchParams } from "expo-router";
 
-type Attendee = {
-  firstName: string;
-  lastName: string;
-  email: string;
-};
-
-type EventWithCheckIn = {
-  eventID: string;
-  eventName: string;
-  email: string;
-};
-
-export default function SearchAttendee() {
+export default function AttendeeLookup() {
   const router = useRouter();
-  const [searchText, setSearchText] = useState("");
-  const [attendees, setAttendees] = useState<Attendee[]>([]);
-  const [selectedAttendee, setSelectedAttendee] = useState<Attendee | null>(null);
-  const [checkIns, setCheckIns] = useState<EventWithCheckIn[]>([]);
-  const params = useLocalSearchParams();
-  const eventMapStr = params.schedule as string;
+  const [query, setQuery] = useState("");
+  const { results, searching } = useAttendeeSearch(query, searchAttendees);
 
-  const eventMap = eventMapStr ? JSON.parse(eventMapStr) : {};
-  
+  const rows = results ?? [];
 
-  async function searchAttendees() {
-    if (!searchText) {
-      setAttendees([]);
-      return;
-    }
+  const header = (
+    <>
+      <PageHeader
+        title="Look Up Attendee"
+        subtitle="See every session someone has checked into."
+      />
+      <SearchField
+        placeholder="Name or email"
+        value={query}
+        onChangeText={setQuery}
+        autoFocus
+      />
+      <View style={styles.listSpacer} />
+    </>
+  );
 
-    const { data, error } = await supabase
-      .from("attendeeProfile")
-      .select("firstName, lastName, email")
-      .or(`firstName.ilike.*${searchText}*,lastName.ilike.*${searchText}*,email.ilike.*${searchText}*`);
-
-    if (error) {
-      console.log(error);
-      return;
-    }
-
-    setAttendees(data || []);
-  }
-
-  async function fetchCheckIns(email: string) {
-    const { data: eventAttendance, error } = await supabase
-      .from("scheduleOptions")
-      .select("optionID, emails");
-
-    if (error) {
-      console.log(error);
-      return;
-    }
-
-    const checkIns: EventWithCheckIn[] = [];
-
-    for (const event of eventAttendance || []) {
-      const emails = event.emails?.split(",").map((e: string) => e.trim()) || [];
-      if (emails.includes(email)) {
-        checkIns.push({
-          eventID: event.optionID,
-          eventName: event.optionID,
-          email: email,
-        });
-      }
-    }
-
-    setCheckIns(checkIns);
-  }
+  const empty = (
+    <Text style={styles.emptyText}>
+      {results === null
+        ? ""
+        : searching
+          ? "Searching"
+          : `No attendees match "${query.trim()}".`}
+    </Text>
+  );
 
   return (
-    <View style={{ flex: 1, padding: 24 }}>
-      
-        <Text style={[
-            theme.typography.title,
-            {
-              color: theme.colors.primaryBlue,
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}>
-            Track attendance by attendee
-        </Text>
-      {!selectedAttendee ? (
-        <>
-          <TextInput
-            placeholder="Search by name or email..."
-            value={searchText}
-            onChangeText={(text) => setSearchText(text)}
-            placeholderTextColor="#999"
-            style={{
-              backgroundColor: "#fff",
-              paddingHorizontal: 16,
-              paddingVertical: 12,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: "#ccc",
-              marginBottom: 16,
-              fontSize: 16,
-            }}
-          />
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+      <FlatList
+        data={rows}
+        keyExtractor={(item) => item.email}
+        contentContainerStyle={styles.content}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item, index }) => {
+          const name = fullName(item);
 
-          <Button title="Search" variant="secondary" onPress={searchAttendees} />
-
-          <FlatList
-            data={attendees}
-            keyExtractor={(item) => item.email}
-            renderItem={({ item }) => (
-              <Button
-                title={`${item.firstName} ${item.lastName} (${item.email})`}
-                variant="secondary"
-                onPress={() => {
-                  setSelectedAttendee(item);
-                  fetchCheckIns(item.email);
-                }}
-              />
-            )}
-          />
-        </>
-      ) : (
-        <>
-
-          <Text style={[
-            theme.typography.sectionTitle,
-            {
-              color: theme.colors.primaryDarkGray,
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}>
-            Attendee: {selectedAttendee.firstName} {selectedAttendee.lastName}
-          </Text>
-
-          <Text style={[
-            theme.typography.body,
-            {
-              color: theme.colors.primaryDarkGray,
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}>Events checked in:</Text>
-
-          {checkIns.length === 0 ? (
-            <Text style={[
-            theme.typography.body,
-            {
-              color: theme.colors.primaryDarkGray,
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}>No events yet</Text>
-          ) : (
-            <FlatList
-              data={checkIns}
-              keyExtractor={(item) => item.eventID}
-              renderItem={({ item }) => (
-                <Card>
-                <Text style={[
-                  theme.typography.body,
-                  {
-                    color: theme.colors.primaryDarkGray,
-                    textAlign: "center",
-                    marginBottom: 16,
+          return (
+            <ListRow
+              first={index === 0}
+              last={index === rows.length - 1}
+              divider={index < rows.length - 1}
+              leading={
+                <Avatar firstName={item.firstName} lastName={item.lastName} />
+              }
+              title={name || item.email}
+              subtitle={name ? item.email : undefined}
+              onPress={() =>
+                router.push({
+                  pathname: "/attendeeDetail",
+                  params: {
+                    email: item.email,
+                    firstName: item.firstName,
+                    lastName: item.lastName,
                   },
-                ]}>
-                  {eventMap[item.eventID]?.eventName || item.eventID}, {eventMap[item.eventID]?.speaker || ""}
-                </Text>
-
-                </Card>
-              )}
+                })
+              }
             />
-          )}
-          <Button
-            title="Back to search"
-            onPress={() => {
-              setSelectedAttendee(null);
-              setCheckIns([]);
-              setSearchText("");
-            }}
-          />
-        </>
-      )}
-    </View>
+          );
+        }}
+      />
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: theme.colors.backgroundWhite,
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 48,
+  },
+  listSpacer: {
+    height: 20,
+  },
+  emptyText: {
+    fontSize: 17,
+    lineHeight: 24,
+    color: theme.colors.labelSecondary,
+    textAlign: "center",
+    paddingTop: 12,
+    paddingHorizontal: 24,
+  },
+});

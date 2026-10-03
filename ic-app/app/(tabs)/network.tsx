@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   pageTitle: {
-    fontSize: 34,
+    fontSize: 29,
     fontWeight: "700",
     letterSpacing: 0.4,
     color: theme.colors.textPrimary,
