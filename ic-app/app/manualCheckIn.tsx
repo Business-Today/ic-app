@@ -1,160 +1,281 @@
-import Button from "@/components/Button";
-import { supabase } from "@/lib/supabase";
-import theme from "@/theme";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
-import { FlatList, Text, TextInput, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 
+import Avatar from "@/components/Avatar";
+import ListRow from "@/components/ListRow";
+import PageHeader from "@/components/PageHeader";
+import SearchField from "@/components/SearchField";
+import SymbolIcon from "@/components/SymbolIcon";
+import { useAttendeeSearch } from "@/hooks/useAttendeeSearch";
+import {
+  checkInAttendee,
+  describeCheckIn,
+  fetchCheckedInEmails,
+  fullName,
+  hapticFor,
+  normalizeEmail,
+  searchAttendees,
+  type Attendee,
+} from "@/lib/attendance";
+import theme from "@/theme";
 
-type Attendee = {
-  firstName: string;
-  lastName: string;
-  email: string;
-};
+export default function ManualCheckIn() {
+  const params = useLocalSearchParams<{
+    eventID?: string;
+    eventName?: string;
+    eventSubtitle?: string;
+  }>();
 
-type EventWithCheckIn = {
-  eventID: string;
-  eventName: string;
-  email: string;
-};
+  const eventID = typeof params.eventID === "string" ? params.eventID : "";
+  const eventName =
+    typeof params.eventName === "string" && params.eventName
+      ? params.eventName
+      : "Session";
+  const eventSubtitle =
+    typeof params.eventSubtitle === "string" ? params.eventSubtitle : "";
 
-export default function SearchAttendee() {
-  const router = useRouter();
-  const [searchText, setSearchText] = useState("");
-  const [attendees, setAttendees] = useState<Attendee[]>([]);
-  const [selectedAttendee, setSelectedAttendee] = useState<Attendee | null>(null);
-  const [checkIns, setCheckIns] = useState<EventWithCheckIn[]>([]);
-  const params = useLocalSearchParams();
-  const eventMapStr = params.schedule as string;
-  const selectedEvent = params.eventID as string;
-  const eventMap = eventMapStr ? JSON.parse(eventMapStr) : {};
-  const speaker = eventMap[selectedEvent]?.speaker;
+  const [query, setQuery] = useState("");
+  const { results, searching } = useAttendeeSearch(query, searchAttendees);
 
-  
+  // Emails already on the session, so rows can show their state up front.
+  const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
-  async function searchAttendees() {
-    if (!searchText) {
-      setAttendees([]);
-      return;
-    }
+  useEffect(() => {
+    let active = true;
 
-    const { data, error } = await supabase
-      .from("attendeeProfile")
-      .select("firstName, lastName, email")
-      .or(`firstName.ilike.*${searchText}*,lastName.ilike.*${searchText}*,email.ilike.*${searchText}*`);
+    if (!eventID) return;
 
-    if (error) {
-      console.log(error);
-      return;
-    }
+    void fetchCheckedInEmails(eventID).then((emails) => {
+      if (active) setCheckedIn(new Set(emails));
+    });
 
-    setAttendees(data || []);
-  }
+    return () => {
+      active = false;
+    };
+  }, [eventID]);
 
   async function checkIn(attendee: Attendee) {
-    const { data: eventAttendance, error } = await supabase
-      .from("scheduleOptions")
-      .select("optionID, emails")
-      .eq("optionID", selectedEvent)
-      .single();
+    if (!eventID || pendingEmail) return;
 
-    if (error) {
-      console.log(error);
-      return;
+    const email = normalizeEmail(attendee.email);
+    setPendingEmail(email);
+
+    const result = await checkInAttendee(eventID, email, { manual: true });
+    const described = describeCheckIn(result);
+
+    setPendingEmail(null);
+    hapticFor(described.outcome);
+
+    if (
+      result.status === "checked_in" ||
+      result.status === "already_checked_in"
+    ) {
+      setCheckedIn((previous) => new Set(previous).add(email));
     }
 
-    if (eventAttendance) {
-      const emails = eventAttendance.emails?.split(",").map((e: string) => e.trim()) || [];
-      if (!emails.includes(attendee.email)) {
-        emails.push(attendee.email);
-        await supabase
-          .from("scheduleOptions")
-          .update({ emails: emails.join(", ") })
-          .eq("optionID", selectedEvent);
-      }
-    }
-     const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-    const { error: historyError } = await supabase
-          .from("attendanceHistory")
-          .insert({
-            eventID: selectedEvent,
-            scannedByEmail: user.email.trim().toLowerCase(),
-            attendeeEmail: attendee.email.trim().toLowerCase(),
-            action: "check_in",
-            manual: true,
-          });
     Toast.show({
-            type: "success",
-            text1: `${attendee.firstName} ${attendee.lastName} checked in`,
-            position: "bottom",
-            visibilityTime: 1000,
-            });
+      type:
+        described.outcome === "success"
+          ? "success"
+          : described.outcome === "duplicate"
+            ? "info"
+            : "error",
+      text1: described.title,
+      text2: described.detail,
+      position: "bottom",
+      visibilityTime: 1500,
+    });
   }
 
+  const rows = results ?? [];
+
+  const header = (
+    <>
+      <PageHeader title="Manual Check-in" />
+
+      <View style={styles.sessionCard}>
+        <Text style={styles.sessionCaption}>Checking in to</Text>
+        <Text style={styles.sessionTitle} numberOfLines={2}>
+          {eventName}
+        </Text>
+        {eventSubtitle ? (
+          <Text style={styles.sessionDetail} numberOfLines={1}>
+            {eventSubtitle}
+          </Text>
+        ) : null}
+      </View>
+
+      <SearchField
+        placeholder="Name or email"
+        value={query}
+        onChangeText={setQuery}
+        autoFocus
+      />
+      <View style={styles.listSpacer} />
+    </>
+  );
+
+  const empty = (
+    <Text style={styles.emptyText}>
+      {results === null
+        ? ""
+        : searching
+          ? "Searching"
+          : `No attendees match "${query.trim()}".`}
+    </Text>
+  );
+
   return (
-    <View style={{ flex: 1, padding: 24 }}>
-      
-        <Text style={[
-            theme.typography.title,
-            {
-              color: theme.colors.primaryBlue,
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}>
-            Check in attendee manually
-        </Text>
-        <Text
-          style={[
-            theme.typography.body,
-            {
-              color: theme.colors.primaryDarkGray,
-              textAlign: "center",
-              marginBottom: 16,
-            },
-          ]}
-        >
-          Checking in for: {eventMap[selectedEvent]?.eventName || selectedEvent}
-  {speaker && speaker !== "undefined" && speaker !== "null" ? `, ${speaker}` : ""}
-        </Text>
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+      <FlatList
+        data={rows}
+        keyExtractor={(item) => item.email}
+        contentContainerStyle={styles.content}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item, index }) => {
+          const name = fullName(item);
+          const email = normalizeEmail(item.email);
+          const done = checkedIn.has(email);
+          const pending = pendingEmail === email;
 
-        <TextInput
-        placeholder="Search by name or email..."
-        value={searchText}
-        onChangeText={(text) => setSearchText(text)}
-        placeholderTextColor="#999"
-        style={{
-            backgroundColor: "#fff",
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: "#ccc",
-            marginBottom: 16,
-            fontSize: 16,
+          return (
+            <ListRow
+              first={index === 0}
+              last={index === rows.length - 1}
+              divider={index < rows.length - 1}
+              leading={
+                <Avatar firstName={item.firstName} lastName={item.lastName} />
+              }
+              title={name || item.email}
+              subtitle={name ? item.email : undefined}
+              trailing={
+                done ? (
+                  <View style={styles.doneState}>
+                    <SymbolIcon
+                      name="checkmark.circle.fill"
+                      fallback="checkmark-circle"
+                      size={20}
+                      color={theme.colors.primaryBlue}
+                    />
+                    <Text style={styles.doneText}>Checked in</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={() => void checkIn(item)}
+                    disabled={pendingEmail !== null}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Check in ${name || item.email}`}
+                    style={({ pressed }) => [
+                      styles.checkInPill,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    {pending ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={theme.colors.primaryBlue}
+                      />
+                    ) : (
+                      <Text style={styles.checkInText}>Check in</Text>
+                    )}
+                  </Pressable>
+                )
+              }
+            />
+          );
         }}
-        />
-
-          <Button title="Search" variant="secondary" onPress={searchAttendees} />
-
-          <FlatList
-            data={attendees}
-            keyExtractor={(item) => item.email}
-            renderItem={({ item }) => (
-              <Button
-                title={`${item.firstName} ${item.lastName} (${item.email})`}
-                variant="secondary"
-                onPress={() => {
-                  setSelectedAttendee(item);
-                  checkIn(item);
-                }}
-              />
-            )}
-          />
-    </View>
-    )
+      />
+    </SafeAreaView>
+  );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: theme.colors.backgroundWhite,
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 48,
+  },
+  sessionCard: {
+    backgroundColor: theme.colors.fillSecondary,
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    marginBottom: 16,
+  },
+  sessionCaption: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: theme.colors.labelSecondary,
+    marginBottom: 4,
+  },
+  sessionTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: -0.3,
+    color: theme.colors.textPrimary,
+  },
+  sessionDetail: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: theme.colors.labelSecondary,
+    marginTop: 3,
+  },
+  listSpacer: {
+    height: 20,
+  },
+  checkInPill: {
+    minWidth: 88,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: theme.colors.backgroundWhite,
+  },
+  checkInText: {
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: -0.2,
+    color: theme.colors.primaryBlue,
+  },
+  doneState: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  doneText: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: theme.colors.labelSecondary,
+  },
+  emptyText: {
+    fontSize: 17,
+    lineHeight: 24,
+    color: theme.colors.labelSecondary,
+    textAlign: "center",
+    paddingTop: 12,
+    paddingHorizontal: 24,
+  },
+  pressed: {
+    opacity: 0.7,
+  },
+});

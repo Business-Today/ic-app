@@ -1,286 +1,246 @@
 import { useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { Alert, FlatList, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
-import Button from "../components/Button";
-import Card from "../components/Card";
-import { supabase } from "../lib/supabase";
-import theme from "../theme";
 
- 
-type Attendee = {
-    firstName: string;
-    lastName: string;
-    email: string;
-}
+import Avatar from "@/components/Avatar";
+import ListRow from "@/components/ListRow";
+import PageHeader from "@/components/PageHeader";
+import SearchField from "@/components/SearchField";
+import SectionLabel from "@/components/SectionLabel";
+import {
+  fetchAttendeesByEmail,
+  fetchCheckedInEmails,
+  fullName,
+  hapticFor,
+  normalizeEmail,
+  removeCheckIn,
+  type Attendee,
+} from "@/lib/attendance";
+import theme from "@/theme";
 
 export default function AttendanceRecords() {
-  const params = useLocalSearchParams();
-  const eventID = params.eventID;
-  const eventName = String(params.eventName);
-  const eventSpeaker = String(params.eventSpeaker);
-  const [attendees, setAttendees] = useState<Attendee[]>([]);
-  const [searchText, setSearchText] = useState("");
+  const params = useLocalSearchParams<{
+    eventID?: string;
+    eventName?: string;
+    eventSubtitle?: string;
+  }>();
 
-  
+  const eventID = typeof params.eventID === "string" ? params.eventID : "";
+  const eventName =
+    typeof params.eventName === "string" && params.eventName
+      ? params.eventName
+      : "Session";
+  const eventSubtitle =
+    typeof params.eventSubtitle === "string" ? params.eventSubtitle : "";
 
-  const filteredAttendees = searchText
-  ? attendees.filter((x) => {
-      const fullName = `${x.firstName} ${x.lastName}`.toLowerCase();
-      return fullName.includes(searchText.toLowerCase());
-    })
-  : attendees;
+  // null while the first load is in flight.
+  const [attendees, setAttendees] = useState<Attendee[] | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState("");
 
-    const listHeader = (
-  <>
-    <Text
-      style={[
-        theme.typography.biggestTitle,
-        {
-          color: theme.colors.primaryBlue,
-          textAlign: "center",
-          marginBottom: 16,
-        },
-      ]}
-    >
-      Attendance: {eventName}
-    </Text>
+  const load = useCallback(async () => {
+    if (!eventID) return [];
 
-    <Text
-      style={[
-        theme.typography.title,
-        {
-          color: theme.colors.primaryDarkGray,
-          textAlign: "center",
-          marginBottom: 16,
-        },
-      ]}
-    >
-      {eventSpeaker}
-    </Text>
+    const emails = await fetchCheckedInEmails(eventID);
+    const profiles = await fetchAttendeesByEmail(emails);
+    const byEmail = new Map(
+      profiles.map((profile) => [normalizeEmail(profile.email), profile])
+    );
 
-    <Text 
-      style={[
-        theme.typography.sectionTitle,
-        { color: theme.colors.primaryDarkBlue, marginBottom: 8 }
-      ]}
-    >
-      Number of attendees checked in: {attendees.length}
-    </Text>
+    // The stored list is chronological, so reversing it puts the latest
+    // check-in on top: the one most likely to need undoing.
+    return [...emails]
+      .reverse()
+      .map(
+        (email) =>
+          byEmail.get(email) ?? { firstName: "", lastName: "", email }
+      );
+  }, [eventID]);
 
-    <TextInput
-      placeholder="Search attendees..."
-      value={searchText}
-      onChangeText={setSearchText}
-      placeholderTextColor="#999"
-      style={{
-        backgroundColor: "#fff",
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: "#ccc",
-        marginHorizontal: 16,
-        marginBottom: 16,
-        fontSize: 16,
-      }}
-    />
-  </>
-);
+  useEffect(() => {
+    let active = true;
 
-    const loadAttendees = useCallback(async () => {
-      if (!eventID || typeof eventID !== "string") {
-        setAttendees([]);
-        return;
-      }
-
-      const { data: eventAttendance, error: attendanceError } = await supabase
-        .from("scheduleOptions")
-        .select("emails")
-        .eq("optionID", eventID)
-        .single();
-
-      if (attendanceError) {
-        console.error("Could not load attendance:", attendanceError);
-        setAttendees([]);
-        return;
-      }
-
-      const emails =
-        typeof eventAttendance?.emails === "string"
-          ? [
-              ...new Set(
-                eventAttendance.emails
-                  .split(",")
-                  .map((email: string) => email.trim().toLowerCase())
-                  .filter(Boolean)
-              ),
-            ]
-          : [];
-
-      if (emails.length === 0) {
-        setAttendees([]);
-        return;
-      }
-
-      const { data: attendeeProfiles, error: profilesError } = await supabase
-        .from("attendeeProfile")
-        .select("firstName, lastName, email")
-        .in("email", emails);
-
-      if (profilesError) {
-        console.error("Could not load attendee profiles:", profilesError);
-        setAttendees([]);
-        return;
-      }
-
-      setAttendees(attendeeProfiles ?? []);
-    }, [eventID]);
-
-    useEffect(() => {
-      loadAttendees();
-    }, [loadAttendees]);
-
-    const uncheckAttendee = async (attendee: Attendee) => {
-  if (!eventID || typeof eventID !== "string") {
-    return;
-  }
-
-  const emailToRemove = attendee.email.trim().toLowerCase();
-
-  const { data: eventAttendance, error: fetchError } = await supabase
-    .from("scheduleOptions")
-    .select("emails")
-    .eq("optionID", eventID)
-    .single();
-
-  if (fetchError || !eventAttendance) {
-    console.error("Could not load event attendance:", fetchError);
-
-    Toast.show({
-      type: "error",
-      text1: "Could not remove check-in",
-      position: "bottom",
-      visibilityTime: 2000,
+    void load().then((rows) => {
+      if (active) setAttendees(rows);
     });
 
-    return;
+    return () => {
+      active = false;
+    };
+  }, [load]);
+
+  async function refresh() {
+    setRefreshing(true);
+    setAttendees(await load());
+    setRefreshing(false);
   }
 
-  const currentEmails =
-    typeof eventAttendance.emails === "string"
-      ? eventAttendance.emails
-      : "";
+  const filtered = useMemo(() => {
+    if (!attendees) return [];
 
-  const updatedEmails = currentEmails
-    .split(",")
-    .map((email: string) => email.trim())
-    .filter(
-      (email: string) =>
-        email.length > 0 && email.toLowerCase() !== emailToRemove
-    )
-    .join(",");
+    const term = query.trim().toLowerCase();
+    if (!term) return attendees;
 
-  const { error: updateError } = await supabase
-    .from("scheduleOptions")
-    .update({ emails: updatedEmails })
-    .eq("optionID", eventID);
-  const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-  const { error: historyError } = await supabase
-        .from("attendanceHistory")
-        .insert({
-          eventID: eventID,
-          scannedByEmail: user.email.trim().toLowerCase(),
-          attendeeEmail: attendee.email.trim().toLowerCase(),
-          action: "uncheck",
-          manual: false,
-        });
+    return attendees.filter((attendee) =>
+      `${fullName(attendee)} ${attendee.email}`.toLowerCase().includes(term)
+    );
+  }, [attendees, query]);
 
+  function confirmRemove(attendee: Attendee) {
+    const name = fullName(attendee) || attendee.email;
 
-  if (updateError) {
-    console.error("Could not update attendance:", updateError);
+    Alert.alert(
+      "Undo check-in?",
+      `${name} will be removed from this session's attendance.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => void remove(attendee),
+        },
+      ]
+    );
+  }
+
+  async function remove(attendee: Attendee) {
+    const result = await removeCheckIn(eventID, attendee.email);
+
+    if (!result.ok) {
+      hapticFor("failed");
+      Toast.show({
+        type: "error",
+        text1: result.message,
+        position: "bottom",
+        visibilityTime: 2000,
+      });
+      return;
+    }
+
+    const email = normalizeEmail(attendee.email);
+
+    setAttendees((previous) =>
+      (previous ?? []).filter(
+        (entry) => normalizeEmail(entry.email) !== email
+      )
+    );
+    hapticFor("success");
     Toast.show({
-      type: "error",
-      text1: "Could not remove check-in",
+      type: "success",
+      text1: `${fullName(attendee) || attendee.email} removed`,
       position: "bottom",
-      visibilityTime: 2000,
+      visibilityTime: 1500,
     });
-
-    return;
   }
 
-  Toast.show({
-    type: "success",
-    text1: `${attendee.firstName} ${attendee.lastName} was unchecked`,
-    position: "bottom",
-    visibilityTime: 2000,
-  });
+  const header = (
+    <>
+      <PageHeader compact title={eventName} subtitle={eventSubtitle} />
+      <SearchField
+        placeholder="Search attendees"
+        value={query}
+        onChangeText={setQuery}
+      />
+      <SectionLabel>
+        {attendees === null
+          ? "Loading"
+          : `${attendees.length} Checked In`}
+      </SectionLabel>
+    </>
+  );
 
-  await loadAttendees();
-};
+  const empty = (
+    <Text style={styles.emptyText}>
+      {attendees === null
+        ? ""
+        : attendees.length === 0
+          ? "No one has checked in yet."
+          : "No attendees match your search."}
+    </Text>
+  );
 
   return (
-    <View style={{ flex: 1 }}>
-    
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+      <FlatList
+        data={filtered}
+        keyExtractor={(item) => item.email}
+        contentContainerStyle={styles.content}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void refresh()}
+          />
+        }
+        renderItem={({ item, index }) => {
+          const name = fullName(item);
 
-    <FlatList
-      data={filteredAttendees}
-      keyExtractor={(item) => item.email}
-      contentContainerStyle={{ padding: 16 }}
-      ListHeaderComponent={listHeader}
-      renderItem={({ item }) => (
-      <Card>
-        <Text
-          style={[
-            theme.typography.sectionTitle,
-            {
-              color: theme.colors.primaryDarkBlue,
-              marginBottom: 8,
-            },
-          ]}
-        >
-          {item.firstName} {item.lastName}
-        </Text>
-
-        <Text
-          style={[
-            theme.typography.body,
-            {
-              color: theme.colors.primaryDarkGray,
-              marginBottom: 12,
-            },
-          ]}
-        >
-          {item.email}
-        </Text>
-
-        <Button
-          title="Undo check-in"
-          variant="secondary"
-          onPress={() => {
-            Alert.alert(
-              "Undo check-in?",
-              `Remove ${item.firstName} ${item.lastName} from this event's attendance records?`,
-              [
-                {
-                  text: "Cancel",
-                  style: "cancel",
-                },
-                {
-                  text: "Remove",
-                  style: "destructive",
-                  onPress: () => uncheckAttendee(item),
-                },
-              ]
-            );
-          }}
-        />
-      </Card>
-    )}
-    />
-    </View>
+          return (
+            <ListRow
+              first={index === 0}
+              last={index === filtered.length - 1}
+              divider={index < filtered.length - 1}
+              leading={
+                <Avatar firstName={item.firstName} lastName={item.lastName} />
+              }
+              title={name || item.email}
+              subtitle={name ? item.email : undefined}
+              trailing={
+                <Pressable
+                  onPress={() => confirmRemove(item)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${name || item.email}`}
+                  style={({ pressed }) => pressed && styles.pressed}
+                >
+                  <Text style={styles.removeText}>Remove</Text>
+                </Pressable>
+              }
+            />
+          );
+        }}
+      />
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: theme.colors.backgroundWhite,
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 48,
+  },
+  removeText: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: theme.colors.destructive,
+  },
+  emptyText: {
+    fontSize: 17,
+    lineHeight: 24,
+    color: theme.colors.labelSecondary,
+    textAlign: "center",
+    paddingTop: 24,
+    paddingHorizontal: 24,
+  },
+  pressed: {
+    opacity: 0.7,
+  },
+});

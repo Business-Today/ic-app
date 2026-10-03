@@ -6,6 +6,7 @@ type Props = {
   onPress?: () => void;
   variant?: "primary" | "secondary";
   selected?: boolean;
+  disabled?: boolean;
 };
 
 export default function Button({
@@ -13,14 +14,17 @@ export default function Button({
   onPress,
   variant = "primary",
   selected = false,
+  disabled = false,
 }: Props) {
   return (
     <TouchableOpacity
       onPress={onPress}
+      disabled={disabled}
       style={[
         styles.button,
         variant === "secondary" && styles.secondary,
         selected ? styles.selectedButton : styles.unselectedButton,
+        disabled && styles.disabled,
       ]}
     >
       <Text
@@ -39,13 +43,17 @@ export default function Button({
 const styles = StyleSheet.create({
   button: {
     backgroundColor: theme.colors.primaryBlue,
-    padding: 14,
+    padding: 20,
     borderRadius: 12,
     marginTop: 10,
   },
 
   secondary: {
     backgroundColor: theme.colors.primaryIceBlue,
+  },
+
+  disabled: {
+    opacity: 0.5,
   },
 
   selectedButton:{
