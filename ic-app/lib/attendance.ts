@@ -6,7 +6,9 @@ import { supabase } from "@/lib/supabase";
  * Shared data access and formatting for the attendance screens.
  *
  * Check-ins are stored as a comma-separated list of attendee emails on each
- * `scheduleOptions` row, in the order they were recorded. Every write also
+ * `scheduleOptions` row, in the order they were recorded. Writes go through
+ * the `set_session_check_in` database function (the table itself is
+ * editor-only), which locks the row so concurrent scans can't race. Every write also
  * appends a row to `attendanceHistory` so staff actions can be audited.
  */
 
@@ -403,10 +405,11 @@ export async function checkInAttendee(
     return { status: "already_checked_in", attendee };
   }
 
-  const { error: updateError } = await supabase
-    .from("scheduleOptions")
-    .update({ emails: [...current, email].join(",") })
-    .eq("optionID", eventID);
+  const { error: updateError } = await supabase.rpc("set_session_check_in", {
+    p_option_id: eventID,
+    p_email: email,
+    p_checked_in: true,
+  });
 
   if (updateError) {
     console.error("Could not update attendance:", updateError);
@@ -429,25 +432,11 @@ export async function removeCheckIn(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const email = normalizeEmail(rawEmail);
 
-  const { data: session, error: sessionError } = await supabase
-    .from("scheduleOptions")
-    .select("emails")
-    .eq("optionID", eventID)
-    .single();
-
-  if (sessionError || !session) {
-    console.error("Could not load session attendance:", sessionError);
-    return { ok: false, message: "Could not remove the check-in" };
-  }
-
-  const remaining = parseEmails(session.emails).filter(
-    (entry) => entry !== email
-  );
-
-  const { error: updateError } = await supabase
-    .from("scheduleOptions")
-    .update({ emails: remaining.join(",") })
-    .eq("optionID", eventID);
+  const { error: updateError } = await supabase.rpc("set_session_check_in", {
+    p_option_id: eventID,
+    p_email: email,
+    p_checked_in: false,
+  });
 
   if (updateError) {
     console.error("Could not update attendance:", updateError);
