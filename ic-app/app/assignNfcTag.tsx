@@ -1,17 +1,3 @@
-import { useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Alert,
-  FlatList,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Toast from "react-native-toast-message";
-
 import Avatar from "@/components/Avatar";
 import ListRow, { ListGroup } from "@/components/ListRow";
 import PageHeader from "@/components/PageHeader";
@@ -25,6 +11,7 @@ import {
   getNfcStatus,
   openNfcSettings,
   readTagOnce,
+  startTagListener,
   type NfcStatus,
 } from "@/lib/nfc";
 import {
@@ -36,6 +23,19 @@ import {
   type TaggedAttendee,
 } from "@/lib/nfcTags";
 import theme from "@/theme";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Toast from "react-native-toast-message";
 
 async function searchTagged(term: string) {
   const { attendees, error } = await searchAttendeesWithTags(term);
@@ -71,6 +71,52 @@ export default function AssignNfcTag() {
   const [saving, setSaving] = useState(false);
 
   const cancelReadRef = useRef<() => void>(() => {});
+  const androidReadRef = useRef<{
+    resolve: (tagId: string | null) => void;
+  } | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android" || nfcStatus !== "ready") {
+        return;
+      }
+
+      const stop = startTagListener({
+        alertMessage: "Hold a tag to the phone",
+
+        onTag: (tagId) => {
+          const pendingRead = androidReadRef.current;
+
+          // Keep reader mode active, but ignore tags unless a scan
+          // was explicitly requested.
+          if (!pendingRead) return;
+
+          androidReadRef.current = null;
+          pendingRead.resolve(tagId);
+
+          // Do not stop the listener after detection.
+        },
+
+        onClosed: (error) => {
+          if (error) {
+            console.error("[NFC] Android listener stopped:", error);
+          }
+
+          const pendingRead = androidReadRef.current;
+          androidReadRef.current = null;
+          pendingRead?.resolve(null);
+        },
+      });
+
+      return () => {
+        const pendingRead = androidReadRef.current;
+        androidReadRef.current = null;
+        pendingRead?.resolve(null);
+
+        stop();
+      };
+    }, [nfcStatus])
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -188,19 +234,59 @@ export default function AssignNfcTag() {
   }
 
   async function readTag(prompt: string): Promise<string | null> {
+  // Do not replace an Android read that is already waiting.
+    if (Platform.OS === "android" && androidReadRef.current) {
+      return null;
+    }
+
     setWaitingForTap(true);
-    const reader = readTagOnce(prompt);
-    cancelReadRef.current = reader.cancel;
 
     try {
+      if (Platform.OS === "android") {
+        return await new Promise<string | null>((resolve) => {
+          androidReadRef.current = { resolve };
+
+          cancelReadRef.current = () => {
+            const pendingRead = androidReadRef.current;
+            androidReadRef.current = null;
+
+            // Resolve the pending read without stopping reader mode.
+            pendingRead?.resolve(null);
+          };
+        });
+      }
+
+      // iOS uses its normal single-session reader.
+      const reader = readTagOnce(prompt);
+      cancelReadRef.current = reader.cancel;
+
       return await reader.promise;
     } catch (error) {
-      console.warn("Tag read failed:", error);
-      Alert.alert("Could not read tag", "Hold the tag still against the phone and try again.");
+      console.error("[NFC] Tag read failed:", error);
+
+      let details: string;
+
+      if (error instanceof Error) {
+        details = `${error.name}: ${error.message}`;
+      } else if (typeof error === "string") {
+        details = error;
+      } else {
+        try {
+          details = JSON.stringify(error) || String(error);
+        } catch {
+          details = String(error);
+        }
+      }
+
+      Alert.alert(
+        "Could not read tag",
+        details || "Unknown NFC error — check the Metro logs."
+      );
+
       return null;
     } finally {
-      cancelReadRef.current = () => {};
       setWaitingForTap(false);
+      cancelReadRef.current = () => {};
     }
   }
 
@@ -385,7 +471,7 @@ export default function AssignNfcTag() {
             {pendingTagId ? (
               <Pressable
                 onPress={() => void assignWithConfirmation(pendingTagId, selected)}
-                disabled={busy}
+                disabled={saving || (waitingForTap && !pendingTagId)}
                 accessibilityRole="button"
                 style={({ pressed }) => [
                   styles.primaryButton,
@@ -513,7 +599,7 @@ export default function AssignNfcTag() {
               first={index === 0}
               last={index === rows.length - 1}
               divider={index < rows.length - 1}
-              disabled={busy}
+              disabled={saving || (waitingForTap && !pendingTagId)}
               leading={
                 <Avatar firstName={item.firstName} lastName={item.lastName} />
               }
