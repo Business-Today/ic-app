@@ -189,18 +189,31 @@ export default function AssignNfcTag() {
 
   async function readTag(prompt: string): Promise<string | null> {
     setWaitingForTap(true);
-    const reader = readTagOnce(prompt);
-    cancelReadRef.current = reader.cancel;
 
     try {
+      const reader = readTagOnce(prompt);
+      cancelReadRef.current = reader.cancel;
+
       return await reader.promise;
     } catch (error) {
-      console.warn("Tag read failed:", error);
-      Alert.alert("Could not read tag", "Hold the tag still against the phone and try again.");
+      console.error("[NFC] Tag read failed:", error);
+
+      const details =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : typeof error === "string"
+            ? error
+            : JSON.stringify(error);
+
+      Alert.alert(
+        "Could not read tag",
+        details || "Unknown NFC error — check the Metro logs."
+      );
+
       return null;
     } finally {
-      cancelReadRef.current = () => {};
       setWaitingForTap(false);
+      cancelReadRef.current = () => {};
     }
   }
 
@@ -385,7 +398,7 @@ export default function AssignNfcTag() {
             {pendingTagId ? (
               <Pressable
                 onPress={() => void assignWithConfirmation(pendingTagId, selected)}
-                disabled={busy}
+                disabled={saving || (waitingForTap && !pendingTagId)}
                 accessibilityRole="button"
                 style={({ pressed }) => [
                   styles.primaryButton,
@@ -513,7 +526,7 @@ export default function AssignNfcTag() {
               first={index === 0}
               last={index === rows.length - 1}
               divider={index < rows.length - 1}
-              disabled={busy}
+              disabled={saving || (waitingForTap && !pendingTagId)}
               leading={
                 <Avatar firstName={item.firstName} lastName={item.lastName} />
               }
