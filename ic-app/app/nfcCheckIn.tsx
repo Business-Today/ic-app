@@ -153,7 +153,19 @@ export default function NfcCheckIn() {
         pushEntry({ tagId, ...described });
         hapticFor(described.outcome);
 
-        return `${described.title}: ${described.detail}. Hold the next tag to the phone`;
+        const icon =
+        described.outcome === "failed"
+          ? "❌"
+          : described.outcome === "rejected"
+            ? "⚠️"
+            : "✅";
+
+      return [
+        `${icon} ${described.title.toUpperCase()}`,
+        described.detail,
+        "",
+        "Remove tag. Tap the next one.",
+      ].join("\n");
       } finally {
         busyRef.current = false;
       }
@@ -181,11 +193,16 @@ export default function NfcCheckIn() {
 
     stopListenerRef.current = startTagListener({
       alertMessage: `Hold an attendee's tag to the phone to check in to ${eventName}`,
+
+      feedbackDurationMs: 1500,
+
       onTag: handleTag,
+
       onClosed: (error) => {
         if (error) {
           console.warn("NFC session closed with error:", error);
         }
+
         setReaderState("stopped");
       },
     });
