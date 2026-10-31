@@ -1,10 +1,9 @@
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Button from "@/components/Button";
 import SegmentedTabs from "@/components/SegmentedTabs";
 import SymbolIcon from "@/components/SymbolIcon";
+import { useScanner } from "@/contexts/ScannerContext";
 import { useUser } from "@/contexts/UserContext";
 import { supabase } from "@/lib/supabase";
 import theme from "@/theme";
@@ -66,6 +66,7 @@ async function openProfileLink(url: string, label: string) {
 
 export default function Network() {
   const { user } = useUser();
+  const scanner = useScanner();
 
   const [activeTab, setActiveTab] = useState<NetworkTab>("qr");
 
@@ -138,20 +139,16 @@ export default function Network() {
   }, [userEmail, refreshKey]);
 
   // --- QR scanner ---------------------------------------------------------
-  const [showScanner, setShowScanner] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [scanned, setScanned] = useState(false);
   const isScanning = useRef(false);
 
   function resetScanner() {
-    setScanned(false);
     isScanning.current = false;
   }
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
-    if (isScanning.current || scanned) return;
+    if (isScanning.current) return;
     isScanning.current = true;
-    setScanned(true);
 
     const { data: attendee, error } = await supabase
       .from("attendeeProfile")
@@ -259,8 +256,20 @@ export default function Network() {
     }
 
     resetScanner();
-    setShowScanner(true);
+    scanner.open({
+      hint: "Point your camera at another attendee's code.",
+      // Go through the ref so the scanner always calls the latest handler.
+      onBarcodeScanned: (event) => void handleScanRef.current(event),
+    });
   }
+
+  // The scanner keeps the handler it was opened with; this ref lets that
+  // handler see current state without reopening.
+  const handleScanRef = useRef(handleBarcodeScanned);
+
+  useEffect(() => {
+    handleScanRef.current = handleBarcodeScanned;
+  });
 
   // --- Views --------------------------------------------------------------
   function renderQr() {
@@ -408,60 +417,11 @@ export default function Network() {
         </View>
       </ScrollView>
 
-      <Modal
-        visible={showScanner}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowScanner(false)}
-      >
-        <View style={styles.scannerSheet}>
-          <View style={styles.scannerHeader}>
-            <View style={styles.scannerGrabber} />
-            <View style={styles.scannerHeaderRow}>
-              <Text style={styles.scannerTitle}>Scan QR Code</Text>
-              <Pressable
-                onPress={() => setShowScanner(false)}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Close scanner"
-                style={({ pressed }) => [
-                  styles.scannerClose,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <SymbolIcon
-                  name="xmark"
-                  fallback="close"
-                  size={16}
-                  weight="bold"
-                  color={theme.colors.labelSecondary}
-                />
-              </Pressable>
-            </View>
-            <Text style={styles.scannerHint}>
-              Point your camera at another attendee&apos;s code.
-            </Text>
-          </View>
-
-          <View style={styles.scannerCameraWrapper}>
-            {showScanner && cameraPermission?.granted ? (
-              <CameraView
-                style={styles.flex}
-                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-              />
-            ) : null}
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
   screen: {
     flex: 1,
     backgroundColor: theme.colors.backgroundWhite,
@@ -532,55 +492,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "600",
     letterSpacing: -0.3,
-  },
-  scannerSheet: {
-    flex: 1,
-    backgroundColor: theme.colors.backgroundWhite,
-  },
-  scannerHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
-  scannerGrabber: {
-    alignSelf: "center",
-    width: 36,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: theme.colors.fillTertiary,
-    marginBottom: 16,
-  },
-  scannerHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  scannerTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    letterSpacing: -0.3,
-    color: theme.colors.textPrimary,
-  },
-  scannerClose: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.colors.fillSecondary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  scannerHint: {
-    fontSize: 15,
-    color: theme.colors.labelSecondary,
-    marginTop: 6,
-  },
-  scannerCameraWrapper: {
-    flex: 1,
-    marginHorizontal: 20,
-    marginBottom: 40,
-    borderRadius: 24,
-    overflow: "hidden",
-    backgroundColor: "#000",
   },
   // Network view
   emptyText: {

@@ -2,6 +2,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import Toast from "react-native-toast-message";
 
@@ -137,10 +138,12 @@ function AuthGate() {
 
 export default function RootLayout() {
   return (
-    <UserProvider>
-      <AuthGate />
-      <StatusBar style="dark" />
-      <Toast />
-    </UserProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <UserProvider>
+        <AuthGate />
+        <StatusBar style="dark" />
+        <Toast />
+      </UserProvider>
+    </GestureHandlerRootView>
   );
 }
