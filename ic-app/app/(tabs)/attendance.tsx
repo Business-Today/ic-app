@@ -16,7 +16,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import DayTabs from "@/components/DayTabs";
 import ListRow, { ListGroup } from "@/components/ListRow";
 import OutcomeIcon from "@/components/OutcomeIcon";
-import PageHeader from "@/components/PageHeader";
 import SectionLabel from "@/components/SectionLabel";
 import SymbolIcon from "@/components/SymbolIcon";
 import TimeBlock from "@/components/TimeBlock";
@@ -230,7 +229,7 @@ export default function Attendance() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <PageHeader title="Attendance" />
+        <Text style={styles.pageTitle}>Attendance</Text>
 
         <SectionLabel first>Session</SectionLabel>
         <Pressable
@@ -571,8 +570,15 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 40,
     paddingBottom: 48,
+  },
+  pageTitle: {
+    fontSize: 29,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    color: theme.colors.textPrimary,
+    marginBottom: 20,
   },
   // Session card
   sessionCard: {

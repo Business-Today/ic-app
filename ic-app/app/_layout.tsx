@@ -110,8 +110,6 @@ function AuthGate() {
         options={{ headerShown: false }}
       />
 
-      <Stack.Screen name="attendance" options={attendanceScreenOptions} />
-
       <Stack.Screen name="attendanceRecords" options={attendanceScreenOptions} />
 
       <Stack.Screen name="attendeeAttendance" options={attendanceScreenOptions} />
