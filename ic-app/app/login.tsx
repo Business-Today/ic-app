@@ -85,14 +85,36 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const { data: registeredAttendee, error: profileError } = await supabase
-        .from("attendeeProfile")
-        .select("email")
-        .eq("email", normalizedEmail)
-        .maybeSingle();
+      // Asks the database "is this email registered?" without being able to
+      // read attendee profiles before sign-in. Falls back to the old lookup
+      // while the database function isn't deployed yet.
+      let isRegistered: boolean;
+      const { data: registered, error: checkError } = await supabase.rpc(
+        "is_registered_attendee",
+        { p_email: normalizedEmail }
+      );
 
-      if (profileError) {
-        console.error("Could not check registration:", profileError);
+      if (checkError?.code === "PGRST202") {
+        const { data: registeredAttendee, error: profileError } = await supabase
+          .from("attendeeProfile")
+          .select("email")
+          .eq("email", normalizedEmail)
+          .maybeSingle();
+
+        if (profileError) {
+          console.error("Could not check registration:", profileError);
+
+          Alert.alert(
+            "Could not verify registration",
+            "Please check your connection and try again."
+          );
+
+          return;
+        }
+
+        isRegistered = !!registeredAttendee;
+      } else if (checkError) {
+        console.error("Could not check registration:", checkError);
 
         Alert.alert(
           "Could not verify registration",
@@ -100,9 +122,11 @@ export default function Login() {
         );
 
         return;
+      } else {
+        isRegistered = registered === true;
       }
 
-      if (!registeredAttendee) {
+      if (!isRegistered) {
         Alert.alert(
           "Email not registered",
           "This email is not registered for the event. Please contact an organizer."
