@@ -1,15 +1,3 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  FlatList,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-
 import ListRow, { ListGroup } from "@/components/ListRow";
 import OutcomeIcon from "@/components/OutcomeIcon";
 import PageHeader from "@/components/PageHeader";
@@ -31,6 +19,17 @@ import {
 } from "@/lib/nfc";
 import { findAttendeeByTag } from "@/lib/nfcTags";
 import theme from "@/theme";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  FlatList,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type ReaderState = "checking" | "scanning" | "stopped" | NfcStatus;
 
