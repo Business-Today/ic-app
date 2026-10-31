@@ -11,6 +11,7 @@ import {
 } from "@/components/SpeakerPicker";
 import { supabase } from "@/lib/supabase";
 import type { Column, TableConfig } from "@/lib/tables";
+import { formatEastern, fromEasternInput, toEasternInput } from "@/lib/time";
 
 type Row = Record<string, unknown>;
 type Drafts = Record<string, Row>;
@@ -18,23 +19,9 @@ type Toast = { id: number; kind: "ok" | "error"; text: string };
 
 // --- Value conversion --------------------------------------------------------
 
-function pad(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-/** timestamptz → value for <input type="datetime-local"> in the editor's zone. */
-function toLocalInput(value: unknown) {
-  if (typeof value !== "string" || !value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
-}
-
 function toInputValue(column: Column, value: unknown) {
   if (value === null || value === undefined) return "";
-  if (column.type === "datetime") return toLocalInput(value);
+  if (column.type === "datetime") return toEasternInput(value);
   return String(value);
 }
 
@@ -45,7 +32,7 @@ function fromInputValue(column: Column, raw: string): unknown {
     const n = Number(raw);
     return Number.isFinite(n) ? n : raw;
   }
-  if (column.type === "datetime") return new Date(raw).toISOString();
+  if (column.type === "datetime") return fromEasternInput(raw) ?? raw;
   return raw;
 }
 
@@ -53,25 +40,52 @@ function sameValue(column: Column, a: unknown, b: unknown) {
   return toInputValue(column, a) === toInputValue(column, b);
 }
 
-const dateLabel = new Intl.DateTimeFormat("en-US", {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-});
-const timeLabel = new Intl.DateTimeFormat("en-US", {
-  hour: "numeric",
-  minute: "2-digit",
-});
-
 /** How a stored value reads in the table. Null means empty. */
 function displayValue(column: Column, value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
-  if (column.type === "datetime") {
-    const d = new Date(String(value));
-    if (Number.isNaN(d.getTime())) return String(value);
-    return `${dateLabel.format(d)} · ${timeLabel.format(d)}`;
-  }
+  if (column.type === "datetime") return formatEastern(String(value));
   return String(value);
+}
+
+/** Why a value will misbehave in the app, if it will. */
+function problemWith(column: Column, value: unknown, sessionIds: Set<string> | null) {
+  if (value === null || value === undefined || value === "") return null;
+  if (column.type === "select" && column.options) {
+    if (!column.options.some((o) => o.value === value)) {
+      return `"${String(value)}" isn't one of ${column.options.map((o) => o.value).join(", ")}; the app won't recognize it`;
+    }
+  }
+  if (column.sessionPrefix && sessionIds) {
+    const id = `${column.sessionPrefix}_${String(value)}`;
+    if (!sessionIds.has(id)) return `No session with option ID ${id}, so this shows nothing in the app`;
+  }
+  return null;
+}
+
+/** A <select> for "select" columns; keeps an unknown current value selectable. */
+function SelectInput({
+  column,
+  value,
+  ...props
+}: {
+  column: Column;
+  value: unknown;
+} & Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "value">) {
+  const current = value === null || value === undefined ? "" : String(value);
+  const options = column.options ?? [];
+  return (
+    <select name={column.name} aria-label={column.label} value={current} {...props}>
+      <option value="">—</option>
+      {current && !options.some((o) => o.value === current) && (
+        <option value={current}>{current} (not valid)</option>
+      )}
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 function inputType(column: Column) {
@@ -161,6 +175,7 @@ function Cell({
   isKey,
   disabled,
   speakers,
+  problem,
   onChange,
 }: {
   column: Column;
@@ -170,6 +185,7 @@ function Cell({
   isKey: boolean;
   disabled: boolean;
   speakers: Speakers;
+  problem: string | null;
   onChange: (value: unknown) => void;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "expand" | "pick">("view");
@@ -200,6 +216,7 @@ function Cell({
     column.type === "longtext" && "long",
     column.type === "speakers" && "long",
     changed && "changed",
+    problem && "invalid",
   ]
     .filter(Boolean)
     .join(" ");
@@ -227,14 +244,28 @@ function Cell({
     <td
       className={className}
       title={
-        changed
+        problem
+          ? problem
+          : changed
           ? `Was: ${show(original) ?? "empty"}`
           : column.type === "speakers" && parseSpeakerIds(value).length
             ? `IDs: ${parseSpeakerIds(value).join(", ")}`
             : column.hint
       }
     >
-      {mode === "edit" ? (
+      {mode === "edit" && column.type === "select" ? (
+        <SelectInput
+          autoFocus
+          column={column}
+          value={value}
+          onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
+          onBlur={() => setMode("view")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") close();
+            else if (e.key === "Escape") cancel();
+          }}
+        />
+      ) : mode === "edit" ? (
         <input
           autoFocus
           name={column.name}
@@ -256,7 +287,7 @@ function Cell({
           disabled={disabled}
           aria-label={`${column.label}: ${text ?? "empty"}${
             changed ? " (edited)" : ""
-          }`}
+          }${problem ? ` (warning: ${problem})` : ""}`}
           onClick={open}
         >
           {shown}
@@ -365,6 +396,8 @@ export default function EditableTable({
   const nextToast = useRef(0);
   const [speakerList, setSpeakerList] = useState<SpeakerOption[]>([]);
   const needsSpeakers = columns.some((c) => c.type === "speakers");
+  const needsSessions = columns.some((c) => c.sessionPrefix);
+  const [sessionIds, setSessionIds] = useState<Set<string> | null>(null);
   const speakers = useMemo<Speakers>(
     () => ({ list: speakerList, byId: new Map(speakerList.map((s) => [s.id, s])) }),
     [speakerList]
@@ -404,6 +437,12 @@ export default function EditableTable({
             .order("firstName", { nullsFirst: false })
         : Promise.resolve(null),
     ]);
+    if (needsSessions) {
+      const sessions = await supabase.from("scheduleOptions").select("optionID");
+      if (!sessions.error) {
+        setSessionIds(new Set((sessions.data ?? []).map((s) => String(s.optionID))));
+      }
+    }
     if (error) {
       notify("error", `Could not load: ${error.message}`);
     } else {
@@ -416,7 +455,7 @@ export default function EditableTable({
       setSpeakerList((speakerResult.data ?? []) as SpeakerOption[]);
     }
     setLoading(false);
-  }, [table, selectList, config.orderBy, notify, needsSpeakers]);
+  }, [table, selectList, config.orderBy, notify, needsSpeakers, needsSessions]);
 
   useEffect(() => {
     setNewRow(null);
@@ -454,6 +493,16 @@ export default function EditableTable({
   }
 
   const dirtyRows = rows.filter((row) => Object.keys(changesFor(row)).length > 0);
+  const problemCount = rows.reduce(
+    (sum, row) =>
+      sum +
+      columns.filter((column) => {
+        const draft = drafts[String(row[key])] ?? {};
+        const value = column.name in draft ? draft[column.name] : row[column.name];
+        return problemWith(column, value, sessionIds) !== null;
+      }).length,
+    0
+  );
   const changedCells = dirtyRows.reduce(
     (sum, row) => sum + Object.keys(changesFor(row)).length,
     0
@@ -602,6 +651,11 @@ export default function EditableTable({
         <span className="count">
           {loading ? "Loading…" : `${visibleRows.length} of ${rows.length}`}
         </span>
+        {!loading && problemCount > 0 && (
+          <span className="problem-count" title="Hover a highlighted cell to see why">
+            {plural(problemCount, "value")} the app won&apos;t recognize
+          </span>
+        )}
         <div className="spacer" />
         {config.allowInsert && !newRow && (
           <button className="btn" disabled={busy} onClick={() => setNewRow({})}>
@@ -647,6 +701,18 @@ export default function EditableTable({
                         disabled={busy}
                         onChange={(value) =>
                           setNewRow((current) => ({ ...current, [column.name]: value }))
+                        }
+                      />
+                    ) : column.type === "select" ? (
+                      <SelectInput
+                        column={column}
+                        value={newRow[column.name]}
+                        disabled={busy}
+                        onChange={(e) =>
+                          setNewRow((current) => ({
+                            ...current,
+                            [column.name]: e.target.value === "" ? null : e.target.value,
+                          }))
                         }
                       />
                     ) : column.type === "longtext" ? (
@@ -719,6 +785,11 @@ export default function EditableTable({
                       isKey={column.name === key}
                       disabled={busy}
                       speakers={speakers}
+                      problem={problemWith(
+                        column,
+                        column.name in draft ? draft[column.name] : row[column.name],
+                        sessionIds
+                      )}
                       onChange={(value) => setDraft(row, column, value)}
                     />
                   ))}

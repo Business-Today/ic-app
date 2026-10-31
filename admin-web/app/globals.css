@@ -769,6 +769,127 @@ td.actions {
   font-size: 12px;
 }
 
+/* Values the app won't recognize ---------------------------------------------- */
+
+.cell.invalid .cell-view {
+  background: #fbecea;
+  border-color: #f0c9c5;
+}
+
+.cell.invalid .text {
+  color: var(--danger);
+  text-decoration: underline wavy #e7a29b;
+  text-underline-offset: 3px;
+}
+
+.problem-count {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #fbecea;
+  color: var(--danger);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+td select {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  padding: 5px 6px;
+  font: inherit;
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Spreadsheet import ---------------------------------------------------------- */
+
+.tab-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px 0 12px;
+}
+
+.dialog.bulk {
+  max-width: 760px;
+}
+
+.dialog.bulk textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.bulk-help {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.bulk-help code {
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--fill);
+}
+
+.bulk-summary {
+  margin: 12px 0 6px;
+  font-size: 13px;
+}
+
+.bulk-summary .bad {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.bulk-summary .warnish {
+  color: #8a5d00;
+  font-weight: 500;
+}
+
+.bulk-preview {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.bulk-preview td {
+  padding: 6px 10px;
+  font-size: 13px;
+  vertical-align: top;
+}
+
+.bulk-preview tr.unknown td,
+.bulk-preview tr.invalid td {
+  background: #fdf1ef;
+  color: var(--danger);
+}
+
+.bulk-change {
+  display: inline-block;
+  margin-right: 12px;
+  white-space: nowrap;
+}
+
+.bulk-change.warn {
+  color: #8a5d00;
+}
+
+.bulk-failed {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fbecea;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.bulk-failed ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
 /* Speaker picker ------------------------------------------------------------- */
 
 .dialog.picker {
@@ -1069,6 +1190,108 @@ tbody tr:hover td.att-name {
 .att-missing.has {
   font-weight: 600;
   color: var(--danger);
+}
+
+.sq-button {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sq-button:hover:not(:disabled) {
+  background: var(--fill);
+}
+
+.sq-button:hover:not(:disabled) .sq {
+  transform: scale(1.15);
+}
+
+.sq-button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.sq-button:disabled {
+  cursor: default;
+}
+
+.sq-button.busy .sq {
+  animation: pulse 0.8s ease-in-out infinite alternate;
+}
+
+.sq {
+  transition: transform 0.12s;
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.35;
+  }
+}
+
+.att-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid #cfe6d6;
+  background: #eef7f1;
+  color: var(--ok);
+  font-size: 13px;
+}
+
+.att-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stray {
+  padding: 14px;
+  border-top: 1px solid var(--rule);
+  background: var(--fill);
+}
+
+.stray h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.stray p {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+}
+
+.stray ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.stray li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.stray li + li {
+  border-top: 1px solid var(--rule);
 }
 
 /* Absences */

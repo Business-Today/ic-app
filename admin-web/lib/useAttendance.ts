@@ -25,6 +25,8 @@ export type AttendanceData = {
   /** Current time, ticking so squares turn red on their own. */
   now: number;
   refresh: () => void;
+  /** Apply a check-in change locally right away (the next refresh confirms it). */
+  setSessionEmails: (optionID: string, emails: string) => void;
 };
 
 /** Read-only: sessions + attendees, re-fetched every minute while `active`. */
@@ -71,5 +73,11 @@ export function useAttendance(active: boolean): AttendanceData {
     };
   }, [active, reloadKey]);
 
-  return { sessions, attendees, loading, error, updatedAt, now, refresh };
+  const setSessionEmails = useCallback((optionID: string, emails: string) => {
+    setSessions((current) =>
+      current.map((s) => (s.optionID === optionID ? { ...s, emails } : s))
+    );
+  }, []);
+
+  return { sessions, attendees, loading, error, updatedAt, now, refresh, setSessionEmails };
 }

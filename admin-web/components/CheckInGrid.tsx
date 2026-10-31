@@ -12,9 +12,11 @@ import {
   sessionInfo,
   statusFor,
   todaysDay,
+  type AttendanceAttendee,
   type SessionInfo,
   type Status,
 } from "@/lib/attendance";
+import { setCheckIn } from "@/lib/checkin";
 import type { AttendanceData } from "@/lib/useAttendance";
 
 const LEGEND: { status: Status; label: string }[] = [
@@ -50,6 +52,40 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
   const day = chosenDay ?? todaysDay(sessions, now) ?? days[0] ?? null;
   const [search, setSearch] = useState("");
   const [onlyMissing, setOnlyMissing] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+
+  async function change(optionID: string, title: string, email: string, name: string, checkIn: boolean) {
+    const question = checkIn
+      ? `Check ${name} in to ${title}?`
+      : `Remove ${name}'s check-in from ${title}?`;
+    if (!window.confirm(question)) return;
+    setBusy(`${optionID}|${email}`);
+    setNotice(null);
+    const result = await setCheckIn(optionID, email, checkIn);
+    setBusy(null);
+    if (!result.ok) {
+      setNotice({ kind: "error", text: `Couldn't update ${name}: ${result.message}` });
+      return;
+    }
+    data.setSessionEmails(optionID, result.emails);
+    setNotice({
+      kind: "ok",
+      text: `${checkIn ? "Checked in" : "Removed check-in for"} ${name} · ${title}${
+        result.historySaved ? "" : " (saved, but the history log entry failed)"
+      }`,
+    });
+  }
+
+  function toggle(attendee: AttendanceAttendee, info: SessionInfo, status: Status) {
+    void change(
+      info.session.optionID,
+      info.session.title ?? info.session.optionID,
+      attendee.email,
+      attendeeName(attendee),
+      status !== "present"
+    );
+  }
 
   // Sessions of the day that at least one attendee has on their schedule.
   const infos = useMemo<SessionInfo[]>(
@@ -77,6 +113,26 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
       )
       .filter((row) => !onlyMissing || row.missing > 0);
   }, [attendees, infos, search, onlyMissing]);
+
+  const byEmail = useMemo(
+    () => new Map(attendees.map((a) => [normalizeEmail(a.email), a])),
+    [attendees]
+  );
+  const stray = useMemo(
+    () =>
+      sessions
+        .filter((s) => s.day === day)
+        .flatMap((s) => {
+          const info = sessionInfo(s, attendees, now);
+          return [...info.checkedIn]
+            .filter((email) => {
+              const attendee = byEmail.get(email);
+              return !attendee || statusFor(attendee, info) === "none";
+            })
+            .map((email) => ({ info, email, attendee: byEmail.get(email) ?? null }));
+        }),
+    [sessions, attendees, now, day, byEmail]
+  );
 
   const dayLabel = (d: string) => {
     const first = sessions.find((s) => s.day === d && s.startTime);
@@ -144,6 +200,18 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
       </div>
 
       {data.error && <p className="att-error">{data.error}</p>}
+      {notice && (
+        <p className={notice.kind === "ok" ? "att-notice" : "att-error"} role={notice.kind === "ok" ? "status" : "alert"}>
+          {notice.text}
+          <button className="btn ghost small" onClick={() => setNotice(null)}>
+            Dismiss
+          </button>
+        </p>
+      )}
+      <p className="description">
+        Click a square to check someone in or remove a check-in. Changes save right away and are
+        logged in the attendance history.
+      </p>
 
       <div className="table-wrap">
         <table className="att-grid">
@@ -178,14 +246,29 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
                   <span className="att-person">{attendeeName(attendee)}</span>
                   <span className="att-email">{attendee.email}</span>
                 </td>
-                {statuses.map((status, i) => (
-                  <td key={infos[i].session.optionID} className="att-cell">
-                    <Square
-                      status={status}
-                      label={`${attendeeName(attendee)} · ${infos[i].session.title ?? infos[i].session.optionID}: ${describeStatus(status, infos[i])}`}
-                    />
-                  </td>
-                ))}
+                {statuses.map((status, i) => {
+                  const info = infos[i];
+                  const label = `${attendeeName(attendee)} · ${info.session.title ?? info.session.optionID}: ${describeStatus(status, info)}`;
+                  const cellBusy = busy === `${info.session.optionID}|${attendee.email}`;
+                  return (
+                    <td key={info.session.optionID} className="att-cell">
+                      {status === "none" ? (
+                        <Square status={status} label={label} />
+                      ) : (
+                        <button
+                          type="button"
+                          className={cellBusy ? "sq-button busy" : "sq-button"}
+                          disabled={busy !== null}
+                          aria-label={`${label}. Click to ${status === "present" ? "remove the check-in" : "check in"}.`}
+                          title={`${label} · click to ${status === "present" ? "remove" : "check in"}`}
+                          onClick={() => toggle(attendee, info, status)}
+                        >
+                          <span className={`sq ${status}`} aria-hidden="true" />
+                        </button>
+                      )}
+                    </td>
+                  );
+                })}
                 <td className={missing ? "att-missing has" : "att-missing"}>{missing || ""}</td>
               </tr>
             ))}
@@ -199,6 +282,46 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
           </tbody>
         </table>
       </div>
+
+      {stray.length > 0 && (
+        <div className="stray">
+          <h3>Other check-ins this day</h3>
+          <p className="muted">
+            People checked in to a session that isn&apos;t on their schedule, or emails that
+            aren&apos;t in the attendee list (often test scans). A session with any check-in counts
+            toward absences, so remove test scans before the conference.
+          </p>
+          <ul>
+            {stray.map(({ info, email, attendee }) => (
+              <li key={`${info.session.optionID}|${email}`}>
+                <span>
+                  <strong>{attendee ? attendeeName(attendee) : email}</strong>
+                  <span className="muted">
+                    {" "}
+                    · {info.session.title ?? info.session.optionID} · {etTime(info.session.startTime)} ·{" "}
+                    {attendee ? "not on their schedule" : "not an attendee"}
+                  </span>
+                </span>
+                <button
+                  className="btn small danger"
+                  disabled={busy !== null}
+                  onClick={() =>
+                    void change(
+                      info.session.optionID,
+                      info.session.title ?? info.session.optionID,
+                      email,
+                      attendee ? attendeeName(attendee) : email,
+                      false
+                    )
+                  }
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }

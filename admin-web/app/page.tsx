@@ -4,6 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import { useCallback, useEffect, useState } from "react";
 
 import AbsenceList from "@/components/AbsenceList";
+import BulkSchedulePaste from "@/components/BulkSchedulePaste";
 import CheckInGrid from "@/components/CheckInGrid";
 import EditableTable from "@/components/EditableTable";
 import { ALLOWED_DOMAIN, isAllowedDomain, supabase } from "@/lib/supabase";
@@ -96,6 +97,8 @@ export default function Home() {
   // Unsaved row counts per table. Every table stays mounted, so switching
   // tabs keeps drafts; these drive the dots on the tabs.
   const [dirty, setDirty] = useState<Record<string, number>>({});
+  // Bumped after a spreadsheet import so the attendee table reloads.
+  const [attendeeTableKey, setAttendeeTableKey] = useState(0);
   // Only fetched (and refreshed every minute) while one of its tabs is open.
   const attendance = useAttendance(
     access === "editor" && (tab === "checkins" || tab === "absences")
@@ -306,7 +309,14 @@ export default function Home() {
         </div>
 
         <div hidden={tab !== "attendees"}>
+          <div className="tab-actions">
+            <BulkSchedulePaste
+              hasUnsavedEdits={(dirty[ATTENDEE_SCHEDULES.table] ?? 0) > 0}
+              onSaved={() => setAttendeeTableKey((k) => k + 1)}
+            />
+          </div>
           <EditableTable
+            key={attendeeTableKey}
             config={ATTENDEE_SCHEDULES}
             onDirtyChange={markDirty}
           />
