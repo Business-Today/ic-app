@@ -3,11 +3,15 @@
 import type { Session } from "@supabase/supabase-js";
 import { useCallback, useEffect, useState } from "react";
 
+import AbsenceList from "@/components/AbsenceList";
+import BulkSchedulePaste from "@/components/BulkSchedulePaste";
+import CheckInGrid from "@/components/CheckInGrid";
 import EditableTable from "@/components/EditableTable";
 import { ALLOWED_DOMAIN, isAllowedDomain, supabase } from "@/lib/supabase";
 import { ATTENDEE_SCHEDULES, SCHEDULE, SPEAKER_TABLES } from "@/lib/tables";
+import { useAttendance } from "@/lib/useAttendance";
 
-type Tab = "schedule" | "speakers" | "attendees";
+type Tab = "schedule" | "speakers" | "attendees" | "checkins" | "absences";
 type Access = "checking" | "editor" | "denied";
 
 const TABS: { value: Tab; label: string; blurb: string }[] = [
@@ -25,6 +29,16 @@ const TABS: { value: Tab; label: string; blurb: string }[] = [
     value: "attendees",
     label: "Attendee schedules",
     blurb: "Which group, offsite and exec sessions each attendee is in.",
+  },
+  {
+    value: "checkins",
+    label: "Check-ins",
+    blurb: "Who has checked in to each session. Squares turn red 15 minutes after a session starts (Eastern time).",
+  },
+  {
+    value: "absences",
+    label: "Absences",
+    blurb: "Missed sessions per attendee, most first. Checking in late removes an absence.",
   },
 ];
 
@@ -83,6 +97,12 @@ export default function Home() {
   // Unsaved row counts per table. Every table stays mounted, so switching
   // tabs keeps drafts; these drive the dots on the tabs.
   const [dirty, setDirty] = useState<Record<string, number>>({});
+  // Bumped after a spreadsheet import so the attendee table reloads.
+  const [attendeeTableKey, setAttendeeTableKey] = useState(0);
+  // Only fetched (and refreshed every minute) while one of its tabs is open.
+  const attendance = useAttendance(
+    access === "editor" && (tab === "checkins" || tab === "absences")
+  );
 
   const markDirty = useCallback((table: string, rows: number) => {
     setDirty((current) =>
@@ -211,6 +231,8 @@ export default function Home() {
       0
     ),
     attendees: dirty[ATTENDEE_SCHEDULES.table] ?? 0,
+    checkins: 0,
+    absences: 0,
   };
   const current = TABS.find((entry) => entry.value === tab)!;
 
@@ -287,11 +309,21 @@ export default function Home() {
         </div>
 
         <div hidden={tab !== "attendees"}>
+          <div className="tab-actions">
+            <BulkSchedulePaste
+              hasUnsavedEdits={(dirty[ATTENDEE_SCHEDULES.table] ?? 0) > 0}
+              onSaved={() => setAttendeeTableKey((k) => k + 1)}
+            />
+          </div>
           <EditableTable
+            key={attendeeTableKey}
             config={ATTENDEE_SCHEDULES}
             onDirtyChange={markDirty}
           />
         </div>
+
+        {tab === "checkins" && <CheckInGrid data={attendance} />}
+        {tab === "absences" && <AbsenceList data={attendance} />}
       </main>
     </>
   );
