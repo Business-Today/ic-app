@@ -91,8 +91,6 @@ export default function Home() {
 
   const router = useRouter();
 
-  const canTakeAttendance = !!user?.email?.endsWith("@princeton.edu");
-
   const [activeTab, setActiveTab] = useState<HomeTab>("schedule");
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
@@ -542,27 +540,6 @@ export default function Home() {
           tabs={HOME_TABS}
           value={activeTab}
           onChange={setActiveTab}
-          trailing={
-            canTakeAttendance ? (
-              <Pressable
-                onPress={() => router.push("/attendance")}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.attendanceButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <SymbolIcon
-                  name="qrcode.viewfinder"
-                  fallback="qr-code-outline"
-                  size={16}
-                  weight="semibold"
-                  color={theme.colors.primaryBlue}
-                />
-                <Text style={styles.attendanceButtonText}>Attendance</Text>
-              </Pressable>
-            ) : null
-          }
         />
 
         <View style={styles.tabContent}>
@@ -591,21 +568,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     color: theme.colors.textPrimary,
     marginBottom: 20,
-  },
-  attendanceButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: theme.colors.fillSecondary,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-  },
-  attendanceButtonText: {
-    color: theme.colors.primaryBlue,
-    fontSize: 15,
-    fontWeight: "600",
-    letterSpacing: -0.2,
   },
   tabContent: {
     marginTop: 32,
