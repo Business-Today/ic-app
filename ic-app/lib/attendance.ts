@@ -503,5 +503,9 @@ export function hapticFor(outcome: CheckInOutcome) {
         ? Haptics.NotificationFeedbackType.Warning
         : Haptics.NotificationFeedbackType.Error;
 
-  void Haptics.notificationAsync(type).catch(() => {});
+  console.log("[Haptics] Requested:", outcome);
+
+  void Haptics.notificationAsync(type).catch((error) => {
+    console.warn("[Haptics] Failed:", error);
+  });
 }
