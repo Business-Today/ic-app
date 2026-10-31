@@ -769,6 +769,425 @@ td.actions {
   font-size: 12px;
 }
 
+/* Speaker picker ------------------------------------------------------------- */
+
+.dialog.picker {
+  max-width: 560px;
+}
+
+.picker-empty {
+  margin: 0 0 12px;
+}
+
+.picker-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--fill);
+  font-size: 13.5px;
+}
+
+.pill.missing {
+  border-color: #f0c9c5;
+  background: #fbecea;
+  color: var(--danger);
+}
+
+.pill button {
+  appearance: none;
+  border: 0;
+  background: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.pill button:hover {
+  background: var(--rule);
+  color: var(--text);
+}
+
+.picker-search {
+  min-width: 0;
+}
+
+.picker-results {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.picker-results li + li {
+  border-top: 1px solid var(--rule);
+}
+
+.picker-results button {
+  appearance: none;
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  background: none;
+  padding: 9px 12px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-results button:hover,
+.picker-results button:focus-visible {
+  background: var(--new);
+  outline: none;
+}
+
+.picker-results code {
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.picker-none {
+  padding: 12px;
+}
+
+.new-speakers {
+  border-color: var(--rule);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+/* Check-ins & absences ------------------------------------------------------- */
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.toggle input {
+  accent-color: var(--blue);
+}
+
+.att-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.att-bar .subtabs {
+  margin: 0;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.att-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f0c9c5;
+  background: #fbecea;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+/* The squares */
+.sq {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  vertical-align: middle;
+  flex: none;
+}
+
+.sq.present {
+  background: #2f9e5b;
+}
+
+.sq.absent {
+  background: #d9443a;
+}
+
+.sq.pending {
+  border: 1.5px solid #b9b3a6;
+  background: var(--surface);
+}
+
+.sq.untracked {
+  background: repeating-linear-gradient(
+    135deg,
+    #e7e3da 0 3px,
+    #f3f1eb 3px 6px
+  );
+}
+
+.sq.none {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #dcd7cc;
+}
+
+/* Grid: attendees down, sessions across */
+.att-grid th,
+.att-grid td {
+  text-align: center;
+}
+
+.att-grid .att-name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 220px;
+  text-align: left;
+  background: var(--surface);
+  box-shadow: inset -1px 0 0 var(--rule);
+}
+
+.att-grid thead .att-name {
+  z-index: 3;
+}
+
+.att-grid td.att-name {
+  padding: 6px 12px;
+}
+
+tbody tr:hover td.att-name {
+  background: #fbfaf7;
+}
+
+.att-person {
+  display: block;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.att-email {
+  display: block;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.att-session {
+  min-width: 64px;
+  max-width: 96px;
+  padding: 8px 6px;
+  vertical-align: bottom;
+  white-space: normal;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.att-time {
+  display: block;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.att-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 2px 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.att-tally {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--ice);
+  color: var(--blue-dark);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.att-tally.untracked {
+  background: var(--fill);
+  color: var(--faint);
+}
+
+.att-cell {
+  padding: 6px 4px;
+  vertical-align: middle;
+}
+
+.att-missing {
+  min-width: 64px;
+  vertical-align: middle;
+  color: var(--faint);
+}
+
+.att-missing.has {
+  font-weight: 600;
+  color: var(--danger);
+}
+
+/* Absences */
+.att-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 14px;
+}
+
+.att-stats div {
+  padding: 12px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.att-stats dt {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.att-stats dd {
+  margin: 2px 0 0;
+  font-family: var(--serif);
+  font-size: 28px;
+  color: var(--ink);
+}
+
+.att-stats .alert {
+  border-color: #f0c9c5;
+  background: #fbecea;
+}
+
+.att-stats .alert dd {
+  color: var(--danger);
+}
+
+.att-stats .warn {
+  border-color: var(--changed-edge);
+  background: var(--changed);
+}
+
+.att-absences td {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+.att-absences .num {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.att-absences tr.alert td {
+  background: #fdf1ef;
+}
+
+.att-absences tr.alert td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.att-absences tr.warn td {
+  background: #fefaec;
+}
+
+.att-absences tr.warn td:first-child {
+  box-shadow: inset 3px 0 0 var(--changed-mark);
+}
+
+.att-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.att-badge.none {
+  color: var(--faint);
+}
+
+.att-badge.some {
+  background: var(--fill);
+  color: var(--text);
+}
+
+.att-badge.warn {
+  background: #f8e3a6;
+  color: #7a5300;
+}
+
+.att-badge.alert {
+  background: var(--danger);
+  color: #fff;
+}
+
+.att-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 420px;
+}
+
+.att-missed-list {
+  font-size: 12.5px;
+}
+
+.att-missed-item {
+  display: block;
+}
+
 /* Save bar: a docked strip under a double rule, like the foot of a page ------ */
 
 .savebar {
@@ -954,6 +1373,18 @@ td.actions {
   }
 
   .folio span:last-child {
+    display: none;
+  }
+
+  .att-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .att-grid .att-name {
+    min-width: 150px;
+  }
+
+  .att-email {
     display: none;
   }
 }

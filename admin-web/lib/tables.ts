@@ -1,4 +1,5 @@
-export type ColumnType = "text" | "longtext" | "number" | "datetime";
+/** "speakers": comma-separated speakerProfile IDs, edited with a search picker. */
+export type ColumnType = "text" | "longtext" | "number" | "datetime" | "speakers";
 
 export type Column = {
   name: string;
@@ -79,10 +80,10 @@ export const SCHEDULE: TableConfig = {
     { name: "location", label: "Location", type: "text", width: 160 },
     {
       name: "idSpeaker",
-      label: "Speaker IDs",
-      type: "text",
-      width: 120,
-      hint: "Comma-separated speaker IDs",
+      label: "Speakers",
+      type: "speakers",
+      width: 200,
+      hint: "Pick from the speaker list (saved as comma-separated speaker IDs)",
     },
     { name: "eventNumber", label: "Event #", type: "number", width: 80 },
     {

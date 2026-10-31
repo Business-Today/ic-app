@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import {
+  SpeakerDialog,
+  describeSpeakers,
+  parseSpeakerIds,
+  type SpeakerOption,
+} from "@/components/SpeakerPicker";
 import { supabase } from "@/lib/supabase";
 import type { Column, TableConfig } from "@/lib/tables";
 
@@ -154,6 +160,7 @@ function Cell({
   editable,
   isKey,
   disabled,
+  speakers,
   onChange,
 }: {
   column: Column;
@@ -162,13 +169,16 @@ function Cell({
   editable: boolean;
   isKey: boolean;
   disabled: boolean;
+  speakers: Speakers;
   onChange: (value: unknown) => void;
 }) {
-  const [mode, setMode] = useState<"view" | "edit" | "expand">("view");
+  const [mode, setMode] = useState<"view" | "edit" | "expand" | "pick">("view");
   const before = useRef<unknown>(value);
   const button = useRef<HTMLButtonElement>(null);
 
-  const text = displayValue(column, value);
+  const show = (v: unknown) =>
+    column.type === "speakers" ? describeSpeakers(v, speakers.byId) : displayValue(column, v);
+  const text = show(value);
   const shown = (
     <span className={text === null ? "placeholder" : "text"}>{text ?? "—"}</span>
   );
@@ -188,6 +198,7 @@ function Cell({
   const className = [
     "cell",
     column.type === "longtext" && "long",
+    column.type === "speakers" && "long",
     changed && "changed",
   ]
     .filter(Boolean)
@@ -195,7 +206,9 @@ function Cell({
 
   function open() {
     before.current = value;
-    setMode(column.type === "longtext" ? "expand" : "edit");
+    setMode(
+      column.type === "longtext" ? "expand" : column.type === "speakers" ? "pick" : "edit"
+    );
   }
 
   /** Closes the editor and hands keyboard focus back to the cell. Not used on
@@ -215,8 +228,10 @@ function Cell({
       className={className}
       title={
         changed
-          ? `Was: ${displayValue(column, original) ?? "empty"}`
-          : column.hint
+          ? `Was: ${show(original) ?? "empty"}`
+          : column.type === "speakers" && parseSpeakerIds(value).length
+            ? `IDs: ${parseSpeakerIds(value).join(", ")}`
+            : column.hint
       }
     >
       {mode === "edit" ? (
@@ -258,7 +273,72 @@ function Cell({
           />,
           document.body
         )}
+      {mode === "pick" &&
+        createPortal(
+          <SpeakerDialog
+            label={column.label}
+            value={value}
+            speakers={speakers.list}
+            onChange={onChange}
+            onDone={close}
+            onCancel={cancel}
+          />,
+          document.body
+        )}
     </td>
+  );
+}
+
+type Speakers = { list: SpeakerOption[]; byId: Map<string, SpeakerOption> };
+
+/** Speaker field in the "add row" line: a button that opens the same picker. */
+function NewSpeakerField({
+  column,
+  value,
+  speakers,
+  disabled,
+  onChange,
+}: {
+  column: Column;
+  value: unknown;
+  speakers: Speakers;
+  disabled: boolean;
+  onChange: (value: unknown) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const before = useRef<unknown>(value);
+  return (
+    <>
+      <button
+        type="button"
+        className="cell-view new-speakers"
+        disabled={disabled}
+        aria-label={`${column.label}: ${describeSpeakers(value, speakers.byId) ?? "none"}`}
+        onClick={() => {
+          before.current = value;
+          setOpen(true);
+        }}
+      >
+        <span className={parseSpeakerIds(value).length ? "text" : "placeholder"}>
+          {describeSpeakers(value, speakers.byId) ?? "Pick speakers…"}
+        </span>
+      </button>
+      {open &&
+        createPortal(
+          <SpeakerDialog
+            label={column.label}
+            value={value}
+            speakers={speakers.list}
+            onChange={onChange}
+            onDone={() => setOpen(false)}
+            onCancel={() => {
+              onChange(before.current);
+              setOpen(false);
+            }}
+          />,
+          document.body
+        )}
+    </>
   );
 }
 
@@ -283,6 +363,12 @@ export default function EditableTable({
   const [newRow, setNewRow] = useState<Row | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextToast = useRef(0);
+  const [speakerList, setSpeakerList] = useState<SpeakerOption[]>([]);
+  const needsSpeakers = columns.some((c) => c.type === "speakers");
+  const speakers = useMemo<Speakers>(
+    () => ({ list: speakerList, byId: new Map(speakerList.map((s) => [s.id, s])) }),
+    [speakerList]
+  );
 
   const dismiss = useCallback((id: number) => {
     setToasts((current) => current.filter((t) => t.id !== id));
@@ -307,15 +393,30 @@ export default function EditableTable({
         nullsFirst: false,
       });
     }
-    const { data, error } = await query;
+    // The app looks speakers up in speakerProfile, so that's the list to pick from.
+    const [{ data, error }, speakerResult] = await Promise.all([
+      query,
+      needsSpeakers
+        ? supabase
+            .from("speakerProfile")
+            .select("id, firstName, lastName, company")
+            .order("lastName", { nullsFirst: false })
+            .order("firstName", { nullsFirst: false })
+        : Promise.resolve(null),
+    ]);
     if (error) {
       notify("error", `Could not load: ${error.message}`);
     } else {
       setRows((data ?? []) as unknown as Row[]);
       setDrafts({});
     }
+    if (speakerResult?.error) {
+      notify("error", `Could not load speakers: ${speakerResult.error.message}`);
+    } else if (speakerResult) {
+      setSpeakerList((speakerResult.data ?? []) as SpeakerOption[]);
+    }
     setLoading(false);
-  }, [table, selectList, config.orderBy, notify]);
+  }, [table, selectList, config.orderBy, notify, needsSpeakers]);
 
   useEffect(() => {
     setNewRow(null);
@@ -538,7 +639,17 @@ export default function EditableTable({
               <tr className="new-row">
                 {columns.map((column) => (
                   <td key={column.name}>
-                    {column.type === "longtext" ? (
+                    {column.type === "speakers" ? (
+                      <NewSpeakerField
+                        column={column}
+                        value={newRow[column.name]}
+                        speakers={speakers}
+                        disabled={busy}
+                        onChange={(value) =>
+                          setNewRow((current) => ({ ...current, [column.name]: value }))
+                        }
+                      />
+                    ) : column.type === "longtext" ? (
                       <textarea
                         rows={2}
                         name={column.name}
@@ -607,6 +718,7 @@ export default function EditableTable({
                       editable={column.editable !== false && column.name !== key}
                       isKey={column.name === key}
                       disabled={busy}
+                      speakers={speakers}
                       onChange={(value) => setDraft(row, column, value)}
                     />
                   ))}
