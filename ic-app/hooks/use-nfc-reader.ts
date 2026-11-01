@@ -71,6 +71,9 @@ export function useTagReader({
   const stopListenerRef = useRef<() => void>(() => {});
   const lastReadRef = useRef<{ tagId: string; at: number } | null>(null);
   const busyRef = useRef(false);
+  // Bumped by start and stop, so a start still waiting on the NFC status can
+  // tell it has been cancelled.
+  const startIdRef = useRef(0);
   // An iOS session outlives renders, so it reads the latest handler from here.
   const onAttendeeRef = useRef(onAttendee);
 
@@ -145,17 +148,26 @@ export function useTagReader({
   );
 
   const stop = useCallback(() => {
+    startIdRef.current += 1;
     stopListenerRef.current();
     stopListenerRef.current = () => {};
-    setState((current) => (current === "scanning" ? "stopped" : current));
+    setState((current) =>
+      current === "scanning" || current === "checking" ? "stopped" : current
+    );
   }, []);
 
   const start = useCallback(async () => {
     stopListenerRef.current();
     stopListenerRef.current = () => {};
+
+    startIdRef.current += 1;
+    const startId = startIdRef.current;
+
     setState("checking");
 
     const status = await getNfcStatus();
+
+    if (startId !== startIdRef.current) return;
 
     if (status !== "ready") {
       setState(status);
@@ -193,7 +205,13 @@ export function useTagReader({
     }, [stop])
   );
 
-  useEffect(() => () => stopListenerRef.current(), []);
+  useEffect(
+    () => () => {
+      startIdRef.current += 1;
+      stopListenerRef.current();
+    },
+    []
+  );
 
   return { state, lastTap, lastUnknownTag, start, stop, reset };
 }
