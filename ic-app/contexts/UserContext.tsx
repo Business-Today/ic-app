@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 
+import { fullName } from "@/lib/attendance";
+
 type User = {
   email: string;
   firstName: string;
@@ -22,16 +24,18 @@ type ScheduleEvent = {
   day: string;
   type: string;
   idSpeaker: string;
+  speakers?: Speaker[];
 };
 
 type Speaker = {
   id: string;
-  firstName: string;
-  lastName: string;
-  title: string;
-  company: string;
-  event: string;
-  day: string;
+  firstName: string | null;
+  lastName: string | null;
+  title: string | null;
+  company: string | null;
+  bio: string | null;
+  event: string | null;
+  day: string | null;
 };
 
 type UserContextType = {
@@ -60,16 +64,15 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     );
 
     return schedule.map((event) => {
-      let speakerNames = (event?.idSpeaker ?? "")
+      // Nameless rows are placeholders (the recruitment session), not people.
+      const speakers = (event?.idSpeaker ?? "")
         .split(",")
         .map((id) => speakerMap.get(id.trim()))
-        .filter((s): s is Speaker => s !== undefined)
-        .map((s) => `${s.firstName} ${s.lastName}`)
-        .join(", ");
+        .filter((s): s is Speaker => s !== undefined && fullName(s) !== "");
 
       return {
         ...event,
-        idSpeaker: speakerNames,
+        speakers,
       };
     });
   }, [schedule, speakersAll]);

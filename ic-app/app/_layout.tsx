@@ -116,6 +116,17 @@ function AuthGate() {
 
       <Stack.Screen name="attendeeDetail" options={attendanceScreenOptions} />
 
+      <Stack.Screen
+        name="speakerDetail"
+        options={{
+          headerShown: false,
+          presentation: "formSheet",
+          sheetAllowedDetents: [0.6, 1],
+          sheetGrabberVisible: true,
+          sheetCornerRadius: 64,
+        }}
+      />
+
       <Stack.Screen name="manualCheckIn" options={attendanceScreenOptions} />
 
       <Stack.Screen name="nfcCheckIn" options={attendanceScreenOptions} />
