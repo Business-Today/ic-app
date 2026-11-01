@@ -1,3 +1,5 @@
+import { Alert, Linking } from "react-native";
+
 import { normalizeEmail, parseEmails, type Attendee } from "@/lib/attendance";
 import { supabase } from "@/lib/supabase";
 
@@ -7,6 +9,36 @@ import { supabase } from "@/lib/supabase";
  */
 
 export type AddToNetworkResult = "added" | "already_added" | "error";
+
+export type DirectoryAttendee = Attendee & {
+  school: string | null;
+  major: string | null;
+  linkedin: string | null;
+  instagram: string | null;
+};
+
+export async function openProfileLink(rawUrl: string, label: string) {
+  const trimmed = rawUrl.trim();
+  // The profile field is free text, so Instagram can be a bare handle.
+  const url =
+    label === "Instagram" && !/instagram\.com/i.test(trimmed)
+      ? `https://www.instagram.com/${trimmed.replace(/^@/, "")}`
+      : trimmed;
+
+  const normalizedUrl =
+    url.startsWith("https://") || url.startsWith("http://")
+      ? url
+      : `https://${url}`;
+
+  const canOpen = await Linking.canOpenURL(normalizedUrl);
+
+  if (!canOpen) {
+    Alert.alert("Invalid link", `This ${label} link cannot be opened.`);
+    return;
+  }
+
+  await Linking.openURL(normalizedUrl);
+}
 
 export async function fetchNetworkEmails(
   rawEmail: string
@@ -27,12 +59,12 @@ export async function fetchNetworkEmails(
 
 /** Everyone at the conference, by last name. */
 export async function fetchDirectory(): Promise<{
-  attendees: Attendee[];
+  attendees: DirectoryAttendee[];
   error: string | null;
 }> {
   const { data, error } = await supabase
     .from("attendeeProfile")
-    .select("firstName, lastName, email")
+    .select("firstName, lastName, email, school, major, linkedin, instagram")
     .order("lastName", { ascending: true })
     .order("firstName", { ascending: true });
 
@@ -41,7 +73,7 @@ export async function fetchDirectory(): Promise<{
     return { attendees: [], error: "Could not load the directory" };
   }
 
-  return { attendees: (data ?? []) as Attendee[], error: null };
+  return { attendees: (data ?? []) as DirectoryAttendee[], error: null };
 }
 
 async function appendToNetwork(

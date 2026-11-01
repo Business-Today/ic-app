@@ -1,11 +1,11 @@
 import { useCameraPermissions } from "expo-camera";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Image,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,6 +33,8 @@ import {
   addToNetwork,
   fetchDirectory,
   fetchNetworkEmails,
+  openProfileLink,
+  type DirectoryAttendee,
 } from "@/lib/network";
 import { supabase } from "@/lib/supabase";
 import theme from "@/theme";
@@ -62,23 +64,8 @@ function getProfileImageUrl(profilePictureUrl: string | null) {
     .getPublicUrl(profilePictureUrl ?? "anonymous.jpg").data.publicUrl;
 }
 
-async function openProfileLink(url: string, label: string) {
-  const normalizedUrl =
-    url.startsWith("https://") || url.startsWith("http://")
-      ? url
-      : `https://${url}`;
-
-  const canOpen = await Linking.canOpenURL(normalizedUrl);
-
-  if (!canOpen) {
-    Alert.alert("Invalid link", `This ${label} link cannot be opened.`);
-    return;
-  }
-
-  await Linking.openURL(normalizedUrl);
-}
-
 export default function Network() {
+  const router = useRouter();
   const { user } = useUser();
   const scanner = useScanner();
 
@@ -94,63 +81,68 @@ export default function Network() {
   // Bumped after adding someone so the list re-fetches.
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Also re-fetches when the scanner closes: someone may have scanned this
-  // attendee's code while it was showing.
+  // Also re-fetches when the scanner closes, since someone may have scanned
+  // this attendee's code while it was showing, and on focus, since the profile
+  // sheet can add someone while it covers this screen.
   const scannerOpen = scanner.isOpen;
 
-  useEffect(() => {
-    if (!userEmail) {
-      return;
-    }
-
-    let isActive = true;
-
-    async function loadNetwork(email: string) {
-      const { emails, error: networkError } = await fetchNetworkEmails(email);
-
-      if (!isActive) return;
-
-      if (networkError) {
-        setLoading(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!userEmail) {
         return;
       }
 
-      setNetworkEmails(new Set(emails));
+      let isActive = true;
 
-      if (emails.length === 0) {
-        setNetworkProfiles([]);
+      async function loadNetwork(email: string) {
+        const { emails, error: networkError } = await fetchNetworkEmails(email);
+
+        if (!isActive) return;
+
+        if (networkError) {
+          setLoading(false);
+          return;
+        }
+
+        setNetworkEmails(new Set(emails));
+
+        if (emails.length === 0) {
+          setNetworkProfiles([]);
+          setLoading(false);
+          return;
+        }
+
+        const { data: profiles, error: profileError } = await supabase
+          .from("attendeeProfile")
+          .select(
+            "email, firstName, lastName, school, major, interests, linkedin, instagram, profilePictureUrl"
+          )
+          .in("email", emails);
+
+        if (!isActive) return;
+
+        if (profileError) {
+          console.error("Could not load network profiles:", profileError);
+          setLoading(false);
+          return;
+        }
+
+        setNetworkProfiles((profiles ?? []) as NetworkProfile[]);
         setLoading(false);
-        return;
       }
 
-      const { data: profiles, error: profileError } = await supabase
-        .from("attendeeProfile")
-        .select(
-          "email, firstName, lastName, school, major, interests, linkedin, instagram, profilePictureUrl"
-        )
-        .in("email", emails);
+      void loadNetwork(userEmail);
 
-      if (!isActive) return;
-
-      if (profileError) {
-        console.error("Could not load network profiles:", profileError);
-        setLoading(false);
-        return;
-      }
-
-      setNetworkProfiles((profiles ?? []) as NetworkProfile[]);
-      setLoading(false);
-    }
-
-    void loadNetwork(userEmail);
-
-    return () => {
-      isActive = false;
-    };
-  }, [userEmail, refreshKey, scannerOpen]);
+      return () => {
+        isActive = false;
+      };
+      // refreshKey and scannerOpen are triggers, not values read here.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userEmail, refreshKey, scannerOpen])
+  );
 
   // --- Directory ----------------------------------------------------------
-  const [directory, setDirectory] = useState<Attendee[] | null>(null);
+  const [directory, setDirectory] = useState<DirectoryAttendee[] | null>(null);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
@@ -489,6 +481,21 @@ export default function Network() {
                     />
                   }
                   title={name}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/directoryProfile",
+                      params: {
+                        email,
+                        firstName: item.firstName ?? "",
+                        lastName: item.lastName ?? "",
+                        school: item.school ?? "",
+                        major: item.major ?? "",
+                        linkedin: item.linkedin ?? "",
+                        instagram: item.instagram ?? "",
+                        inNetwork: String(networkEmails.has(email)),
+                      },
+                    })
+                  }
                   trailing={
                     networkEmails.has(email) ? (
                       <View style={styles.addedState}>
