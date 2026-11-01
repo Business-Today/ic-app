@@ -14,7 +14,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import ConferenceMap from "@/components/ConferenceMap";
 import SegmentedTabs from "@/components/SegmentedTabs";
 import SymbolIcon from "@/components/SymbolIcon";
-import { emergencyContacts } from "@/constants/emergencyContacts";
+import {
+  type EmergencyContact
+} from "@/constants/emergencyContacts";
 import { useUser } from "@/contexts/UserContext";
 import { fullName } from "@/lib/attendance";
 import { supabase } from "@/lib/supabase";
@@ -96,6 +98,19 @@ export default function Home() {
 
   const [activeTab, setActiveTab] = useState<HomeTab>("schedule");
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+
+  const [groupContacts, setGroupContacts] = useState<EmergencyContact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsError, setContactsError] = useState<string | null>(null);
+
+  const parsedGroupNumber = Number(user?.groupNumber);
+
+  const groupNumber =
+    Number.isInteger(parsedGroupNumber) &&
+    parsedGroupNumber >= 1 &&
+    parsedGroupNumber <= 12
+      ? parsedGroupNumber
+      : null;
 
   useEffect(() => {
     let isMounted = true;
@@ -353,6 +368,79 @@ export default function Home() {
     await Linking.openURL(url);
   }
 
+  useEffect(() => {
+    let active = true;
+
+    setGroupContacts([]);
+    setContactsError(null);
+
+    if (!userEmail || groupNumber === null) {
+      setContactsLoading(false);
+      return;
+    }
+
+    setContactsLoading(true);
+
+    async function loadGroupContacts() {
+      try {
+        const { data, error } = await supabase
+          .from("smallGroups")
+          .select("groupNumber, log, log_num, sr, sr_num")
+          .eq("groupNumber", groupNumber)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (!active) return;
+
+        if (!data) {
+          setGroupContacts([]);
+          return;
+        }
+
+        const contacts: EmergencyContact[] = [];
+
+        if (data.log || data.log_num) {
+          contacts.push({
+            id: `group-${groupNumber}-log`,
+            name: data.log?.trim() || "LOG Staffer",
+            subtitle: `Logistics · Group ${groupNumber}`,
+            phone: String(data.log_num ?? "").trim(),
+          });
+        }
+
+        if (data.sr || data.sr_num) {
+          contacts.push({
+            id: `group-${groupNumber}-sr`,
+            name: data.sr?.trim() || "SR Staffer",
+            subtitle: `Student Relations · Group ${groupNumber}`,
+            phone: String(data.sr_num ?? "").trim(),
+          });
+        }
+
+        setGroupContacts(contacts);
+      } catch (error) {
+        if (!active) return;
+
+        console.error("Could not load small group contacts:", error);
+
+        setContactsError(
+          "Your group contacts could not be loaded. Please try again."
+        );
+      } finally {
+        if (active) {
+          setContactsLoading(false);
+        }
+      }
+    }
+
+    void loadGroupContacts();
+
+    return () => {
+      active = false;
+    };
+  }, [userEmail, groupNumber]);
+
   function renderSchedule() {
     return (
       <>
@@ -553,36 +641,78 @@ export default function Home() {
     );
   }
 
+  function renderContactCard(contact: EmergencyContact) {
+    return (
+      <Pressable
+        key={contact.id}
+        onPress={() => void callContact(contact.name, contact.phone)}
+        accessibilityRole="button"
+        accessibilityLabel={`Call ${contact.name}`}
+        style={({ pressed }) => [
+          styles.contactCard,
+          pressed && styles.pressed,
+        ]}
+      >
+        <View style={styles.contactText}>
+          <Text style={styles.contactName}>
+            {contact.name}
+          </Text>
+
+          {contact.subtitle ? (
+            <Text style={styles.contactSubtitle}>
+              {contact.subtitle}
+            </Text>
+          ) : null}
+
+          {contact.phone ? (
+            <Text style={styles.contactSubtitle}>
+              {contact.phone}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.callBadge}>
+          <SymbolIcon
+            name="phone.fill"
+            fallback="call"
+            size={18}
+            color={theme.colors.primaryBlue}
+          />
+        </View>
+      </Pressable>
+    );
+  }
+
   function renderEmergency() {
     return (
-      <View style={styles.contactList}>
-        {emergencyContacts.map((contact) => (
-          <Pressable
-            key={contact.id}
-            onPress={() => void callContact(contact.name, contact.phone)}
-            accessibilityRole="button"
-            accessibilityLabel={`Call ${contact.name}`}
-            style={({ pressed }) => [
-              styles.contactCard,
-              pressed && styles.pressed,
-            ]}
-          >
-            <View style={styles.contactText}>
-              <Text style={styles.contactName}>{contact.name}</Text>
-              {contact.subtitle ? (
-                <Text style={styles.contactSubtitle}>{contact.subtitle}</Text>
-              ) : null}
-            </View>
-            <View style={styles.callBadge}>
-              <SymbolIcon
-                name="phone.fill"
-                fallback="call"
-                size={18}
-                color={theme.colors.primaryBlue}
-              />
-            </View>
-          </Pressable>
-        ))}
+      <View>
+        <Text style={styles.sectionTitle}>
+          {groupNumber !== null
+            ? `Group ${groupNumber} Contacts`
+            : "Your Group Contacts"}
+        </Text>
+
+        {groupNumber === null ? (
+          <Text style={styles.emptyText}>
+            You have not been assigned a small group yet.
+          </Text>
+        ) : contactsLoading ? (
+          <Text style={styles.emptyText}>
+            Loading your group contacts…
+          </Text>
+        ) : contactsError ? (
+          <Text style={styles.emptyText}>
+            {contactsError}
+          </Text>
+        ) : groupContacts.length === 0 ? (
+          <Text style={styles.emptyText}>
+            No contacts have been added for your group yet.
+          </Text>
+        ) : (
+          <View style={styles.contactList}>
+            {groupContacts.map(renderContactCard)}
+          </View>
+        )}
       </View>
     );
   }
@@ -791,5 +921,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  emergencySection: {
+    marginTop: 28,
   },
 });
