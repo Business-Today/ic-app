@@ -228,14 +228,14 @@ export default function NfcCheckIn() {
       case "checking":
         return {
           tone: "neutral" as const,
-          title: "Preparing NFC",
+          title: "Preparing Tap",
           body: "One moment.",
         };
       case "scanning":
         return {
           tone: "active" as const,
           title:
-            Platform.OS === "ios" ? "Ready. Follow the NFC sheet" : "Ready to tap",
+            Platform.OS === "ios" ? "Ready. Follow the sheet" : "Ready to tap",
           body:
             Platform.OS === "ios"
               ? "Hold each tag near the top of the phone. The sheet closes after about a minute; start again to continue."
@@ -250,14 +250,14 @@ export default function NfcCheckIn() {
       case "disabled":
         return {
           tone: "problem" as const,
-          title: "NFC is off",
+          title: "Tap is off",
           body: "Turn NFC on in the phone settings, then start again.",
         };
       case "unavailable":
       default:
         return {
           tone: "problem" as const,
-          title: "NFC not available",
+          title: "Tap not available",
           body: "This device or build cannot read tags. Use QR or manual check-in instead.",
         };
     }
@@ -272,7 +272,7 @@ export default function NfcCheckIn() {
 
   const header = (
     <>
-      <PageHeader title="Tap NFC Tags" subtitle={eventName} />
+      <PageHeader title="Tap Tags" subtitle={eventName} />
 
       <View style={styles.statusCard}>
         <View style={styles.statusRow}>
@@ -334,7 +334,7 @@ export default function NfcCheckIn() {
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.secondaryButtonText}>Open NFC Settings</Text>
+            <Text style={styles.secondaryButtonText}>Open Settings</Text>
           </Pressable>
         ) : null}
       </View>

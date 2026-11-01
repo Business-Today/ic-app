@@ -14,7 +14,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "BT Conference uses your camera to scan QR codes for conference check-in and to take a profile photo for your attendee profile.",
         "ITSAppUsesNonExemptEncryption": false,
-        "NFCReaderUsageDescription": "BT Conference uses NFC to tap attendee tags for conference check-in."
+        "NFCReaderUsageDescription": "BT Conference reads the badges you tap to check people in and add them to your network."
       }
     },
     "android": {
@@ -71,7 +71,7 @@
       [
         "react-native-nfc-manager",
         {
-          "nfcPermission": "BT Conference uses NFC to tap attendee tags for conference check-in.",
+          "nfcPermission": "BT Conference reads the badges you tap to check people in and add them to your network.",
           "includeNdefEntitlement": false
         }
       ]

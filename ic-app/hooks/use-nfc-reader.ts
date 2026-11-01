@@ -13,7 +13,7 @@ import {
   startTagListener,
   type NfcStatus,
 } from "@/lib/nfc";
-import { findAttendeeByTag } from "@/lib/nfcTags";
+import { findAttendeeByTag, type TaggedAttendee } from "@/lib/nfcTags";
 
 export type NfcReaderState =
   | "idle"
@@ -29,7 +29,20 @@ export type NfcTap = {
   detail: string;
 };
 
-type Options = {
+export type TapResult = Omit<NfcTap, "tagId">;
+
+type TagReaderOptions = {
+  /** Shown on the iOS NFC sheet when it opens. */
+  alertMessage: string;
+  /** What the person reading calls the thing being tapped. */
+  noun?: string;
+  /** Replaces the detail line for a tag that is linked to nobody. */
+  unknownDetail?: string;
+  /** Runs for each tag linked to an attendee. */
+  onAttendee: (attendee: TaggedAttendee) => Promise<TapResult>;
+};
+
+type CheckInOptions = {
   eventID: string;
   eventName: string;
   /** Called once per new check-in so the caller can bump its count. */
@@ -41,11 +54,16 @@ type Options = {
 const REPEAT_WINDOW_MS = 3000;
 
 /**
- * Reads attendee tags and checks each one into the given session. The
- * reader is stopped whenever the hosting screen loses focus or unmounts, so
- * the radio is never left on behind another screen.
+ * Reads tags, finds who each one belongs to and hands them to `onAttendee`.
+ * The reader is stopped whenever the hosting screen loses focus or unmounts,
+ * so the radio is never left on behind another screen.
  */
-export function useNfcReader({ eventID, eventName, onCheckedIn }: Options) {
+export function useTagReader({
+  alertMessage,
+  noun = "tag",
+  unknownDetail,
+  onAttendee,
+}: TagReaderOptions) {
   const [state, setState] = useState<NfcReaderState>("idle");
   const [lastTap, setLastTap] = useState<NfcTap | null>(null);
   const [lastUnknownTag, setLastUnknownTag] = useState<string | null>(null);
@@ -53,21 +71,22 @@ export function useNfcReader({ eventID, eventName, onCheckedIn }: Options) {
   const stopListenerRef = useRef<() => void>(() => {});
   const lastReadRef = useRef<{ tagId: string; at: number } | null>(null);
   const busyRef = useRef(false);
-  const onCheckedInRef = useRef(onCheckedIn);
+  // An iOS session outlives renders, so it reads the latest handler from here.
+  const onAttendeeRef = useRef(onAttendee);
 
   useEffect(() => {
-    onCheckedInRef.current = onCheckedIn;
+    onAttendeeRef.current = onAttendee;
   });
 
   // Returned strings replace the text on the iOS NFC sheet, which is what
-  // the staff member is looking at while tapping.
+  // the person tapping is looking at.
   const handleTag = useCallback(
     async (tagId: string): Promise<string> => {
       const last = lastReadRef.current;
       const at = Date.now();
 
       if (last && last.tagId === tagId && at - last.at < REPEAT_WINDOW_MS) {
-        return "Hold the next tag to the phone";
+        return `Hold the next ${noun} to the phone`;
       }
 
       lastReadRef.current = { tagId, at };
@@ -91,44 +110,38 @@ export function useNfcReader({ eventID, eventName, onCheckedIn }: Options) {
           setLastUnknownTag(tagId);
           setLastTap({
             tagId,
-            title: "Unassigned tag",
-            detail: `${formatTagId(tagId)} is not linked to anyone yet`,
+            title: `Unassigned ${noun}`,
+            detail:
+              unknownDetail ?? `${formatTagId(tagId)} is not linked to anyone yet`,
             outcome: "rejected",
           });
           hapticFor("rejected");
-          return "Unassigned tag. Hold the next tag to the phone";
+          return `Unassigned ${noun}. Hold the next ${noun} to the phone`;
         }
 
-        const result = await checkInAttendee(eventID, attendee.email, {
-          manual: false,
-        });
-        const described = describeCheckIn(result);
+        const result = await onAttendeeRef.current(attendee);
 
-        if (result.status === "checked_in") {
-          onCheckedInRef.current?.();
-        }
-
-        setLastTap({ tagId, ...described });
-        hapticFor(described.outcome);
+        setLastTap({ tagId, ...result });
+        hapticFor(result.outcome);
 
         const icon =
-          described.outcome === "failed"
+          result.outcome === "failed"
             ? "❌"
-            : described.outcome === "rejected"
+            : result.outcome === "rejected"
               ? "⚠️"
               : "✅";
 
         return [
-          `${icon} ${described.title.toUpperCase()}`,
-          described.detail,
+          `${icon} ${result.title.toUpperCase()}`,
+          result.detail,
           "",
-          "Remove tag. Tap the next one.",
+          `Remove ${noun}. Tap the next one.`,
         ].join("\n");
       } finally {
         busyRef.current = false;
       }
     },
-    [eventID]
+    [noun, unknownDetail]
   );
 
   const stop = useCallback(() => {
@@ -152,7 +165,7 @@ export function useNfcReader({ eventID, eventName, onCheckedIn }: Options) {
     setState("scanning");
 
     stopListenerRef.current = startTagListener({
-      alertMessage: `Hold an attendee's tag to the phone to check in to ${eventName}`,
+      alertMessage,
       feedbackDurationMs: 1500,
       onTag: handleTag,
       onClosed: (error) => {
@@ -162,7 +175,7 @@ export function useNfcReader({ eventID, eventName, onCheckedIn }: Options) {
         setState("stopped");
       },
     });
-  }, [eventName, handleTag]);
+  }, [alertMessage, handleTag]);
 
   /** Clears the last result so a fresh session starts clean. */
   const reset = useCallback(() => {
@@ -183,4 +196,22 @@ export function useNfcReader({ eventID, eventName, onCheckedIn }: Options) {
   useEffect(() => () => stopListenerRef.current(), []);
 
   return { state, lastTap, lastUnknownTag, start, stop, reset };
+}
+
+/** Reads attendee tags and checks each one into the given session. */
+export function useNfcReader({ eventID, eventName, onCheckedIn }: CheckInOptions) {
+  return useTagReader({
+    alertMessage: `Hold an attendee's tag to the phone to check in to ${eventName}`,
+    onAttendee: async (attendee) => {
+      const result = await checkInAttendee(eventID, attendee.email, {
+        manual: false,
+      });
+
+      if (result.status === "checked_in") {
+        onCheckedIn?.();
+      }
+
+      return describeCheckIn(result);
+    },
+  });
 }

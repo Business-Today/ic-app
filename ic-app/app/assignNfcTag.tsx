@@ -225,7 +225,7 @@ export default function AssignNfcTag() {
     if (nfcStatus === "ready") return true;
 
     Alert.alert(
-      "NFC not available",
+      "Tap not available",
       nfcStatus === "disabled"
         ? "Turn NFC on in the phone settings first."
         : "This device or build cannot read tags."
@@ -280,7 +280,7 @@ export default function AssignNfcTag() {
 
       Alert.alert(
         "Could not read tag",
-        details || "Unknown NFC error — check the Metro logs."
+        details || "Unknown tap error — check the Metro logs."
       );
 
       return null;
@@ -369,7 +369,7 @@ export default function AssignNfcTag() {
   const header = (
     <>
       <PageHeader
-        title="NFC Tags"
+        title="Link Tags"
         subtitle="Link a tag to each attendee so they can check in with a tap."
       />
 
@@ -383,7 +383,7 @@ export default function AssignNfcTag() {
           />
           <View style={styles.noticeText}>
             <Text style={styles.noticeTitle}>
-              {nfcStatus === "disabled" ? "NFC is off" : "NFC not available"}
+              {nfcStatus === "disabled" ? "Tap is off" : "Tap not available"}
             </Text>
             <Text style={styles.noticeBody}>
               {nfcStatus === "disabled"

@@ -1,21 +1,26 @@
 import { requireOptionalNativeModule } from "expo";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { File } from "expo-file-system";
-import { Image, type ImageRef } from "expo-image";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
-import Svg, {
-  Defs,
-  LinearGradient,
-  Path,
-  Rect,
-  Stop,
-} from "react-native-svg";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeOut,
+  LayoutAnimationConfig,
+  interpolate,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from "react-native-reanimated";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 
 import type { RevealLayout } from "@/components/RevealLayer";
 import { layerControlStyles } from "@/components/RevealLayer";
 import SymbolIcon from "@/components/SymbolIcon";
+import { QR_LOGO_SVG } from "@/constants/qrLogo";
 
 export type ScanEvent = { data: string };
 
@@ -40,7 +45,7 @@ type Props = {
   hint?: string;
   /** Extra content (feedback, counts) shown under the hint while scanning. */
   footer?: ReactNode;
-  /** When given, an NFC tab shows this over the blurred camera. */
+  /** When given, a Tap tab shows this over the blurred camera. */
   nfc?: ReactNode;
   /** When given, a My Code tab shows this code over the blurred camera. */
   myCode?: MyCode;
@@ -53,69 +58,36 @@ const BRACKET_SIZE = 250;
 const BRACKET_STROKE = 7;
 const BRACKET_RADIUS = 30;
 const BRACKET_ARM = 60;
+const CODE_CARD_PADDING = 20;
+// My Code's card fills the same square the brackets frame.
+const CODE_SIZE = BRACKET_SIZE - CODE_CARD_PADDING * 2;
 
-const QR_LOGO = require("../assets/images/bt_mark.png");
+const BACKDROP_TIMING = { duration: 300, easing: Easing.inOut(Easing.cubic) };
+const SWITCH_TRANSITION = {
+  transitionDuration: 250,
+  transitionTimingFunction: "ease-in-out",
+} as const;
+// The old tab leaves before the new one arrives, so their text never overlaps.
+export const TAB_OUT = FadeOut.duration(120);
+export const TAB_IN = FadeIn.delay(80).duration(200);
 
-// iOS blurs the live preview directly. Android cannot sample a camera view, and
-// an older dev build has no native blur at all, so both of those use the colour
-// frames below. Loading lazily keeps a missing module off the screen.
+// iOS blurs the live video natively. Android, and a dev build without the
+// module, use a grey gradient. Loading lazily keeps a missing module off the
+// screen, since rendering one throws.
 const LiveBlurView: typeof import("expo-blur").BlurView | null =
   Platform.OS === "ios" && requireOptionalNativeModule("ExpoBlur")
     ? // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("expo-blur").BlurView
     : null;
-
-// The camera frame is shrunk to this many pixels and stretched across the
-// screen, which leaves only soft regions of colour and no recognisable detail.
-const BACKDROP_PIXELS = 16;
-// Pause between frames. The crossfade fills the gap so the colours keep drifting.
-const BACKDROP_INTERVAL_MS = 300;
-const BACKDROP_RETRY_MS = 2000;
-const BACKDROP_FADE_MS = 600;
-
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Removes a captured frame so the loop does not fill the cache. */
-function deleteFrame(uri: string) {
-  try {
-    new File(uri).delete();
-  } catch {
-    // The system clears the cache directory eventually.
-  }
-}
-
-/** Reads one frame and shrinks it. Resolves to null if the frame is not read. */
-async function captureBackdrop(
-  camera: CameraView | null
-): Promise<ImageRef | null> {
-  try {
-    const photo = await camera?.takePictureAsync({
-      quality: 0.1,
-      skipProcessing: true,
-      shutterSound: false,
-    });
-
-    if (!photo?.uri) return null;
-
-    try {
-      return await Image.loadAsync(
-        { uri: photo.uri },
-        { maxWidth: BACKDROP_PIXELS, maxHeight: BACKDROP_PIXELS }
-      );
-    } finally {
-      deleteFrame(photo.uri);
-    }
-  } catch {
-    // The dark gradient underneath is a complete background on its own.
-    return null;
-  }
-}
+const AnimatedBlurView = LiveBlurView
+  ? Animated.createAnimatedComponent(LiveBlurView)
+  : null;
 
 /**
  * Camera preview with white scanning brackets and a torch toggle. Optional
  * NFC and My Code tabs sit on a heavily blurred version of the live camera.
+ * The camera stays on across tabs, so switching only blurs it and crossfades
+ * what is drawn on top.
  */
 export default function QrScanContent({
   layout,
@@ -129,206 +101,280 @@ export default function QrScanContent({
   mode: controlledMode,
   onModeChange,
 }: Props) {
-  const [permission] = useCameraPermissions();
+  const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [internalMode, setInternalMode] = useState<ScanMode>("scan");
 
   const mode = controlledMode ?? internalMode;
   const scanning = mode === "scan";
 
-  const cameraRef = useRef<CameraView>(null);
-  const [cameraReady, setCameraReady] = useState(false);
-  const [backdrop, setBackdrop] = useState<ImageRef | null>(null);
-
-  // Keep the colours following the camera while a tab hides the preview.
-  // Each frame finishes before the next starts, so captures never overlap.
-  const followCamera = !LiveBlurView && active && !scanning && cameraReady;
+  // 0 = clear camera, 1 = fully behind the backdrop.
+  const backdrop = useSharedValue(scanning ? 0 : 1);
 
   useEffect(() => {
-    if (!followCamera) return;
-
-    let running = true;
-
-    async function follow() {
-      while (running) {
-        const image = await captureBackdrop(cameraRef.current);
-
-        if (!running) return;
-        if (image) setBackdrop(image);
-
-        await wait(image ? BACKDROP_INTERVAL_MS : BACKDROP_RETRY_MS);
-      }
-    }
-
-    void follow();
-
-    return () => {
-      running = false;
-    };
-  }, [followCamera]);
+    backdrop.value = withTiming(scanning ? 0 : 1, BACKDROP_TIMING);
+  }, [scanning, backdrop]);
 
   function selectMode(next: ScanMode) {
     if (next !== "scan") setTorch(false);
+    // Opening on the NFC tab skips the ask that the Scan button makes.
+    if (next === "scan" && !permission?.granted && permission?.canAskAgain) {
+      void requestPermission();
+    }
     setInternalMode(next);
     onModeChange?.(next);
   }
 
   const tabs: { key: ScanMode; label: string }[] = [
     { key: "scan", label: "Scan" },
-    ...(nfc ? [{ key: "nfc" as const, label: "NFC" }] : []),
+    ...(nfc ? [{ key: "nfc" as const, label: "Tap" }] : []),
     ...(myCode ? [{ key: "code" as const, label: "My Code" }] : []),
   ];
 
   return (
     <>
+      {/* Shows until the camera's first frame, and when it isn't allowed. */}
+      <View style={[StyleSheet.absoluteFill, styles.cameraBase]} />
+
       {permission?.granted ? (
         <CameraView
-          ref={cameraRef}
           style={StyleSheet.absoluteFill}
           facing="back"
-          onCameraReady={() => setCameraReady(true)}
           enableTorch={torch}
           barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-          onBarcodeScanned={active && scanning ? onBarcodeScanned : undefined}
+          // Always attached: removing it reconfigures the running camera, which
+          // shows as a glitch when the blur clears. Off-tab reads are ignored.
+          onBarcodeScanned={(event) => {
+            if (active && scanning) onBarcodeScanned?.(event);
+          }}
         />
       ) : null}
 
-      {scanning ? null : <ColorBackdrop image={backdrop} />}
+      <TabBackdrop progress={backdrop} />
 
-      <View
-        style={[
-          styles.region,
-          { height: layout.height, paddingTop: layout.topInset + 8 },
-        ]}
-      >
-        <View style={styles.controls}>
-          {scanning ? (
-            <Pressable
-              onPress={() => setTorch((on) => !on)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={torch ? "Turn torch off" : "Turn torch on"}
-              style={({ pressed }) => [
-                layerControlStyles.button,
-                torch && layerControlStyles.buttonActive,
-                pressed && layerControlStyles.pressed,
-              ]}
-            >
-              <SymbolIcon
-                name={torch ? "flashlight.on.fill" : "flashlight.off.fill"}
-                fallback={torch ? "flashlight" : "flashlight-outline"}
-                size={18}
-                weight="semibold"
-                color={torch ? "#111111" : "#FFFFFF"}
-              />
-            </Pressable>
-          ) : null}
-        </View>
-
-        <View style={styles.body}>
-          {mode === "scan" ? (
-            <>
-              {permission?.granted ? null : (
-                <Text style={styles.noCameraText}>
-                  Allow camera access in Settings to scan QR codes.
-                </Text>
-              )}
-
-              <View style={styles.brackets}>
-                <Brackets />
-                <Text style={styles.title}>{title}</Text>
-              </View>
-
-              {hint ? (
-                <Text style={styles.hint} numberOfLines={2}>
-                  {hint}
-                </Text>
-              ) : null}
-
-              {footer ? <View style={styles.footer}>{footer}</View> : null}
-            </>
-          ) : mode === "nfc" ? (
-            nfc
-          ) : myCode ? (
-            <>
-              {myCode.name ? (
-                <Text style={styles.codeName}>{myCode.name}</Text>
-              ) : null}
-              {myCode.subtitle ? (
-                <Text style={styles.codeSubtitle}>{myCode.subtitle}</Text>
-              ) : null}
-
-              <View style={styles.codeCard}>
-                <QRCode
-                  value={myCode.value}
-                  size={220}
-                  logo={QR_LOGO}
-                  logoSize={56}
-                  logoMargin={4}
-                  logoBorderRadius={8}
-                  logoBackgroundColor="#FFFFFF"
-                />
-              </View>
-
-              <Text style={styles.hint}>
-                Let someone scan this to check you in or add you to their
-                network.
-              </Text>
-            </>
-          ) : null}
-        </View>
-
-        {tabs.length > 1 ? (
-          <View style={styles.switch} accessibilityRole="tablist">
-            {tabs.map((tab) => (
-              <Pressable
-                key={tab.key}
-                onPress={() => selectMode(tab.key)}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: mode === tab.key }}
-                style={[
-                  styles.segment,
-                  mode === tab.key && styles.segmentSelected,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.segmentText,
-                    mode === tab.key && styles.segmentTextSelected,
+      {/* Fades are for moving between tabs, not for opening the layer. */}
+      <LayoutAnimationConfig skipEntering skipExiting>
+        <View
+          style={[
+            styles.region,
+            { height: layout.height, paddingTop: layout.topInset + 8 },
+          ]}
+        >
+          <View style={styles.controls}>
+            {scanning ? (
+              <Animated.View entering={TAB_IN} exiting={TAB_OUT}>
+                <Pressable
+                  onPress={() => setTorch((on) => !on)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    torch ? "Turn torch off" : "Turn torch on"
+                  }
+                  style={({ pressed }) => [
+                    layerControlStyles.button,
+                    torch && layerControlStyles.buttonActive,
+                    pressed && layerControlStyles.pressed,
                   ]}
                 >
-                  {tab.label}
-                </Text>
-              </Pressable>
-            ))}
+                  <SymbolIcon
+                    name={torch ? "flashlight.on.fill" : "flashlight.off.fill"}
+                    fallback={torch ? "flashlight" : "flashlight-outline"}
+                    size={18}
+                    weight="semibold"
+                    color={torch ? "#111111" : "#FFFFFF"}
+                  />
+                </Pressable>
+              </Animated.View>
+            ) : null}
           </View>
-        ) : null}
-      </View>
+
+          <View style={styles.body}>
+            <Animated.View
+              key={mode}
+              entering={TAB_IN}
+              exiting={TAB_OUT}
+              style={StyleSheet.absoluteFill}
+            >
+              {mode === "scan" ? (
+                <FocalLayout
+                  above={
+                    permission?.granted ? null : (
+                      <Text style={styles.noCameraText}>
+                        Allow camera access in Settings to scan QR codes.
+                      </Text>
+                    )
+                  }
+                  focal={
+                    <View style={styles.brackets}>
+                      <Brackets />
+                      <Text style={styles.title}>{title}</Text>
+                    </View>
+                  }
+                >
+                  {hint ? (
+                    <Text style={styles.hint} numberOfLines={2}>
+                      {hint}
+                    </Text>
+                  ) : null}
+
+                  {footer ? <View style={styles.footer}>{footer}</View> : null}
+                </FocalLayout>
+              ) : mode === "nfc" ? (
+                nfc
+              ) : myCode ? (
+                <FocalLayout
+                  above={
+                    <>
+                      {myCode.name ? (
+                        <Text style={styles.codeName}>{myCode.name}</Text>
+                      ) : null}
+                      {myCode.subtitle ? (
+                        <Text style={styles.codeSubtitle}>
+                          {myCode.subtitle}
+                        </Text>
+                      ) : null}
+                    </>
+                  }
+                  focal={
+                    <View style={styles.codeCard}>
+                      <QRCode
+                        value={myCode.value}
+                        size={CODE_SIZE}
+                        // The logo hides modules; lower levels can't always recover them.
+                        ecl="H"
+                        logoSVG={QR_LOGO_SVG}
+                        logoSize={Math.round(CODE_SIZE / 4)}
+                        logoMargin={4}
+                        logoBorderRadius={8}
+                        logoBackgroundColor="#FFFFFF"
+                      />
+                    </View>
+                  }
+                >
+                  <Text style={styles.hint}>
+                    Let someone scan this to check you in or add you to their
+                    network.
+                  </Text>
+                </FocalLayout>
+              ) : null}
+            </Animated.View>
+          </View>
+
+          {tabs.length > 1 ? (
+            <ModeSwitch tabs={tabs} value={mode} onChange={selectMode} />
+          ) : null}
+        </View>
+      </LayoutAnimationConfig>
     </>
   );
 }
 
 /**
- * Opaque background that follows the camera: a live blur where available,
- * otherwise colour frames. In the frame version a dark gradient covers
- * the live preview, the shrunken frame fades in over it, and a dark wash keeps
- * the content readable.
+ * Holds the square at the centre of a tab at one height whatever surrounds it,
+ * so the brackets and the code card swap in place. The space splits unevenly
+ * because more goes under the square than over it.
  */
-function ColorBackdrop({ image }: { image: ImageRef | null }) {
-  if (LiveBlurView) {
+function FocalLayout({
+  above,
+  focal,
+  children,
+}: {
+  above: ReactNode;
+  focal: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.focalLayout}>
+      <View style={styles.focalAbove}>{above}</View>
+      {focal}
+      <View style={styles.focalBelow}>{children}</View>
+    </View>
+  );
+}
+
+/** Pill switch whose highlight slides to the selected tab. */
+function ModeSwitch({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: { key: ScanMode; label: string }[];
+  value: ScanMode;
+  onChange: (mode: ScanMode) => void;
+}) {
+  const [segments, setSegments] = useState<
+    Partial<Record<ScanMode, { x: number; width: number }>>
+  >({});
+
+  const selected = segments[value];
+
+  return (
+    <View style={styles.switch} accessibilityRole="tablist">
+      {/* Mounts on first measure, already in place, so it only slides later. */}
+      {selected ? (
+        <Animated.View
+          style={[
+            styles.switchHighlight,
+            {
+              width: selected.width,
+              transform: [{ translateX: selected.x }],
+              transitionProperty: ["width", "transform"],
+              ...SWITCH_TRANSITION,
+            },
+          ]}
+        />
+      ) : null}
+
+      {tabs.map((tab) => (
+        <Pressable
+          key={tab.key}
+          onPress={() => onChange(tab.key)}
+          onLayout={({ nativeEvent: { layout } }) => {
+            const { x, width } = layout;
+            setSegments((current) => ({ ...current, [tab.key]: { x, width } }));
+          }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: value === tab.key }}
+          style={styles.segment}
+        >
+          <Animated.Text
+            style={[
+              styles.segmentText,
+              {
+                opacity: value === tab.key ? 1 : 0.55,
+                transitionProperty: "opacity",
+                ...SWITCH_TRANSITION,
+              },
+            ]}
+          >
+            {tab.label}
+          </Animated.Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+/** Background of the tabs that hide the scanner's clear camera view. */
+function TabBackdrop({ progress }: { progress: SharedValue<number> }) {
+  const blurProps = useAnimatedProps(() => ({
+    // The native view treats anything lower as 1, which is too faint to see.
+    intensity: interpolate(progress.value, [0, 1], [1, 100]),
+  }));
+  const gradientStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
+
+  if (AnimatedBlurView) {
     return (
-      <LiveBlurView
-        intensity={100}
-        tint="systemThickMaterialDark"
+      <AnimatedBlurView
+        animatedProps={blurProps}
+        tint="dark"
         style={StyleSheet.absoluteFill}
-      >
-        <View style={styles.liveDim} />
-      </LiveBlurView>
+      />
     );
   }
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <Animated.View style={[StyleSheet.absoluteFill, gradientStyle]}>
       <Svg style={StyleSheet.absoluteFill}>
         <Defs>
           <LinearGradient id="backdrop" x1="0" y1="0" x2="0" y2="1">
@@ -338,18 +384,7 @@ function ColorBackdrop({ image }: { image: ImageRef | null }) {
         </Defs>
         <Rect width="100%" height="100%" fill="url(#backdrop)" />
       </Svg>
-
-      {image ? (
-        <Image
-          source={image}
-          contentFit="cover"
-          transition={BACKDROP_FADE_MS}
-          style={StyleSheet.absoluteFill}
-        />
-      ) : null}
-
-      <View style={styles.dim} />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -397,24 +432,11 @@ export const scanTextStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  cameraBase: {
+    backgroundColor: "#000000",
+  },
   region: {
     paddingHorizontal: 20,
-  },
-  dim: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "rgba(20,20,22,0.6)",
-  },
-  liveDim: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "rgba(20,20,22,0.45)",
   },
   controls: {
     height: 40,
@@ -425,9 +447,23 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+  },
+  focalLayout: {
+    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
     paddingBottom: 12,
+  },
+  focalAbove: {
+    flex: 2,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingBottom: 24,
+  },
+  focalBelow: {
+    flex: 5,
+    alignSelf: "stretch",
+    alignItems: "center",
   },
   noCameraText: {
     fontSize: 15,
@@ -435,7 +471,6 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.7)",
     textAlign: "center",
     paddingHorizontal: 24,
-    marginBottom: 24,
   },
   brackets: {
     width: BRACKET_SIZE,
@@ -470,8 +505,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   codeCard: {
-    marginTop: 24,
-    padding: 20,
+    padding: CODE_CARD_PADDING,
     borderRadius: 24,
     backgroundColor: "#FFFFFF",
   },
@@ -484,21 +518,23 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.14)",
     marginBottom: 24,
   },
+  switchHighlight: {
+    position: "absolute",
+    top: 4,
+    bottom: 4,
+    left: 0,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.28)",
+  },
   segment: {
     paddingVertical: 12,
     paddingHorizontal: 28,
     borderRadius: 999,
   },
-  segmentSelected: {
-    backgroundColor: "rgba(255,255,255,0.28)",
-  },
   segmentText: {
     fontSize: 17,
     fontWeight: "600",
     letterSpacing: -0.3,
-    color: "rgba(255,255,255,0.55)",
-  },
-  segmentTextSelected: {
     color: "#FFFFFF",
   },
 });
