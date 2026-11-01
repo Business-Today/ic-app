@@ -19,37 +19,42 @@ export default function SpeakerDetail() {
   const bio = speaker?.bio?.trim();
 
   return (
-    // The ScrollView must be the root: iOS form sheets only keep a directly
-    // parented ScrollView in place, and otherwise move it down by the sheet's
-    // on-screen offset.
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      {speaker ? (
-        <>
-          <View style={styles.hero}>
-            <Avatar
-              firstName={speaker.firstName}
-              lastName={speaker.lastName}
-              size={72}
-            />
-            <Text style={styles.name}>{fullName(speaker)}</Text>
-            {role ? <Text style={styles.role}>{role}</Text> : null}
-          </View>
+    <>
+      {/* The ScrollView must be the first root view: iOS form sheets only keep
+          a directly parented ScrollView in place, and otherwise move it down
+          by the sheet's on-screen offset. */}
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {speaker ? (
+          <>
+            <View style={styles.hero}>
+              <Avatar
+                firstName={speaker.firstName}
+                lastName={speaker.lastName}
+                size={72}
+              />
+              <Text style={styles.name}>{fullName(speaker)}</Text>
+              {role ? <Text style={styles.role}>{role}</Text> : null}
+            </View>
 
-          <SectionLabel>About</SectionLabel>
-          {bio ? (
-            <Text style={styles.bio}>{bio}</Text>
-          ) : (
-            <Text style={styles.emptyText}>No bio available yet.</Text>
-          )}
-        </>
-      ) : (
-        <Text style={styles.emptyText}>Speaker not found.</Text>
-      )}
-    </ScrollView>
+            <SectionLabel>About</SectionLabel>
+            {bio ? (
+              <Text style={styles.bio}>{bio}</Text>
+            ) : (
+              <Text style={styles.emptyText}>No bio available yet.</Text>
+            )}
+          </>
+        ) : (
+          <Text style={styles.emptyText}>Speaker not found.</Text>
+        )}
+      </ScrollView>
+      <View style={styles.pillBar} pointerEvents="none" collapsable={false}>
+        <View style={styles.pill} />
+      </View>
+    </>
   );
 }
 
@@ -57,6 +62,22 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: theme.colors.backgroundWhite,
+  },
+  pillBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 24,
+    alignItems: "center",
+    paddingTop: 8,
+    backgroundColor: theme.colors.backgroundWhite,
+  },
+  pill: {
+    width: 36,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: theme.colors.labelTertiary,
   },
   content: {
     paddingHorizontal: 20,
