@@ -72,7 +72,7 @@ export default function Login() {
     if (!normalizedEmail) {
       Alert.alert(
         "Missing email",
-        "Enter the email you used for your application."
+        "Enter your school email, as submitted in the RSVP Form."
       );
       return;
     }
