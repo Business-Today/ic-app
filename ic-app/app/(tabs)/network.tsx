@@ -1,7 +1,9 @@
 import { useCameraPermissions } from "expo-camera";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Linking,
   Pressable,
@@ -10,14 +12,28 @@ import {
   Text,
   View,
 } from "react-native";
-import QRCode from "react-native-qrcode-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import Avatar from "@/components/Avatar";
 import Button from "@/components/Button";
+import ListRow from "@/components/ListRow";
+import NetworkNfcTab from "@/components/NetworkNfcTab";
+import SearchField from "@/components/SearchField";
 import SegmentedTabs from "@/components/SegmentedTabs";
 import SymbolIcon from "@/components/SymbolIcon";
 import { useScanner } from "@/contexts/ScannerContext";
 import { useUser } from "@/contexts/UserContext";
+import {
+  fullName,
+  hapticFor,
+  normalizeEmail,
+  type Attendee,
+} from "@/lib/attendance";
+import {
+  addToNetwork,
+  fetchDirectory,
+  fetchNetworkEmails,
+} from "@/lib/network";
 import { supabase } from "@/lib/supabase";
 import theme from "@/theme";
 
@@ -33,14 +49,12 @@ type NetworkProfile = {
   profilePictureUrl: string | null;
 };
 
-type NetworkTab = "qr" | "network";
+type NetworkTab = "network" | "directory";
 
 const NETWORK_TABS: { key: NetworkTab; label: string }[] = [
-  { key: "qr", label: "QR" },
-  { key: "network", label: "Network" },
+  { key: "network", label: "My Network" },
+  { key: "directory", label: "Directory" },
 ];
-
-const QR_LOGO = require("../../assets/images/bt_mark.png");
 
 function getProfileImageUrl(profilePictureUrl: string | null) {
   return supabase.storage
@@ -68,16 +82,21 @@ export default function Network() {
   const { user } = useUser();
   const scanner = useScanner();
 
-  const [activeTab, setActiveTab] = useState<NetworkTab>("qr");
+  const [activeTab, setActiveTab] = useState<NetworkTab>("network");
 
   // --- Connections list ---------------------------------------------------
+  const [networkEmails, setNetworkEmails] = useState<Set<string>>(new Set());
   const [networkProfiles, setNetworkProfiles] = useState<NetworkProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   const userEmail = user?.email;
 
-  // Bumped after a successful scan so the list re-fetches.
+  // Bumped after adding someone so the list re-fetches.
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Also re-fetches when the scanner closes: someone may have scanned this
+  // attendee's code while it was showing.
+  const scannerOpen = scanner.isOpen;
 
   useEffect(() => {
     if (!userEmail) {
@@ -86,25 +105,17 @@ export default function Network() {
 
     let isActive = true;
 
-    async function loadNetwork() {
-      const { data: me, error: networkError } = await supabase
-        .from("attendeeProfile")
-        .select("network")
-        .eq("email", userEmail)
-        .single();
+    async function loadNetwork(email: string) {
+      const { emails, error: networkError } = await fetchNetworkEmails(email);
 
       if (!isActive) return;
 
       if (networkError) {
-        console.error("Could not load network:", networkError);
         setLoading(false);
         return;
       }
 
-      const emails = (me?.network ?? "")
-        .split(",")
-        .map((email: string) => email.trim())
-        .filter(Boolean);
+      setNetworkEmails(new Set(emails));
 
       if (emails.length === 0) {
         setNetworkProfiles([]);
@@ -131,12 +142,70 @@ export default function Network() {
       setLoading(false);
     }
 
-    void loadNetwork();
+    void loadNetwork(userEmail);
 
     return () => {
       isActive = false;
     };
-  }, [userEmail, refreshKey]);
+  }, [userEmail, refreshKey, scannerOpen]);
+
+  // --- Directory ----------------------------------------------------------
+  const [directory, setDirectory] = useState<Attendee[] | null>(null);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+
+  // Fetched each time the tab opens, which also retries after a failure.
+  useEffect(() => {
+    if (activeTab !== "directory") return;
+
+    let isActive = true;
+
+    void fetchDirectory().then(({ attendees, error }) => {
+      if (!isActive) return;
+
+      setDirectoryError(error);
+      if (!error) setDirectory(attendees);
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeTab]);
+
+  const directoryRows = useMemo(() => {
+    const me = normalizeEmail(userEmail ?? "");
+    const term = query.trim().toLowerCase();
+
+    return (directory ?? []).filter(
+      (attendee) =>
+        normalizeEmail(attendee.email) !== me &&
+        (!term || fullName(attendee).toLowerCase().includes(term))
+    );
+  }, [directory, query, userEmail]);
+
+  // Only adds to this attendee's own list; the other person isn't there to
+  // agree, unlike a QR or NFC exchange.
+  async function addFromDirectory(attendee: Attendee) {
+    if (!userEmail || pendingEmail) return;
+
+    const email = normalizeEmail(attendee.email);
+    setPendingEmail(email);
+
+    const result = await addToNetwork(userEmail, email, { mutual: false });
+
+    setPendingEmail(null);
+
+    if (result === "error") {
+      hapticFor("failed");
+      Alert.alert("Error", "Failed to add profile to network.");
+      return;
+    }
+
+    hapticFor("success");
+    setNetworkEmails((previous) => new Set(previous).add(email));
+    setRefreshKey((key) => key + 1);
+  }
 
   // --- QR scanner ---------------------------------------------------------
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -150,16 +219,47 @@ export default function Network() {
     if (isScanning.current) return;
     isScanning.current = true;
 
+    const email = normalizeEmail(data);
+
     const { data: attendee, error } = await supabase
       .from("attendeeProfile")
       .select("firstName, lastName, email")
-      .eq("email", data)
-      .single();
+      .eq("email", email)
+      .maybeSingle();
 
     if (error || !attendee) {
       Alert.alert("QR Code Error", "No profile found for this QR code.", [
         { text: "OK", onPress: resetScanner },
       ]);
+      return;
+    }
+
+    if (!user?.email) {
+      Alert.alert("Error", "User email not found.", [
+        { text: "OK", onPress: resetScanner },
+      ]);
+      return;
+    }
+
+    const myEmail = user.email;
+
+    if (email === normalizeEmail(myEmail)) {
+      Alert.alert("That's You", "This is your own QR code.", [
+        { text: "OK", onPress: resetScanner },
+      ]);
+      return;
+    }
+
+    if (networkEmails.has(email)) {
+      // They may have been added from the Directory, which is one-way, so the
+      // in-person exchange still completes their side.
+      await addToNetwork(myEmail, email, { mutual: true });
+
+      Alert.alert(
+        "Already Connected",
+        `${attendee.firstName} is already in your network.`,
+        [{ text: "OK", onPress: resetScanner }]
+      );
       return;
     }
 
@@ -171,60 +271,9 @@ export default function Network() {
         {
           text: "Add Profile",
           onPress: async () => {
-            if (!user?.email) {
-              Alert.alert("Error", "User email not found.");
-              resetScanner();
-              return;
-            }
+            const result = await addToNetwork(myEmail, email, { mutual: true });
 
-            const { data: me, error: fetchError } = await supabase
-              .from("attendeeProfile")
-              .select("network")
-              .eq("email", user.email)
-              .single();
-
-            if (fetchError) {
-              console.log(fetchError);
-              Alert.alert("Error", "Failed to fetch your network.");
-              resetScanner();
-              return;
-            }
-
-            const currentConnections =
-              typeof me?.network === "string" ? me.network : "";
-
-            const updatedConnections =
-              currentConnections.trim() === ""
-                ? attendee.email
-                : `${currentConnections},${attendee.email}`;
-
-            const { error: updateError } = await supabase
-              .from("attendeeProfile")
-              .update({ network: updatedConnections })
-              .eq("email", user.email);
-
-            // Add the current user to the scanned attendee's network too.
-            const { data: theirs } = await supabase
-              .from("attendeeProfile")
-              .select("network")
-              .eq("email", attendee.email)
-              .single();
-
-            const theirConnections =
-              typeof theirs?.network === "string" ? theirs.network : "";
-
-            const theirUpdatedConnections =
-              theirConnections.trim() === ""
-                ? user.email
-                : `${theirConnections},${user.email}`;
-
-            await supabase
-              .from("attendeeProfile")
-              .update({ network: theirUpdatedConnections })
-              .eq("email", attendee.email);
-
-            if (updateError) {
-              console.log(updateError);
+            if (result === "error") {
               Alert.alert("Error", "Failed to add profile to network.");
             } else {
               Alert.alert(
@@ -243,16 +292,10 @@ export default function Network() {
   };
 
   async function openScanner() {
+    // NFC and My Code work without the camera, so a refusal doesn't block
+    // opening. The Scan tab explains how to allow it.
     if (!cameraPermission?.granted) {
-      const result = await requestCameraPermission();
-
-      if (!result.granted) {
-        Alert.alert(
-          "Permission Denied",
-          "You need to grant camera permission to scan QR codes."
-        );
-        return;
-      }
+      await requestCameraPermission();
     }
 
     resetScanner();
@@ -260,6 +303,7 @@ export default function Network() {
       hint: "Point your camera at another attendee's code.",
       // Go through the ref so the scanner always calls the latest handler.
       onBarcodeScanned: (event) => void handleScanRef.current(event),
+      nfc: <NetworkNfcTab onAdded={() => setRefreshKey((key) => key + 1)} />,
     });
   }
 
@@ -272,55 +316,6 @@ export default function Network() {
   });
 
   // --- Views --------------------------------------------------------------
-  function renderQr() {
-    const fullName = [user?.firstName, user?.lastName]
-      .filter(Boolean)
-      .join(" ");
-
-    return (
-      <View style={styles.qrSection}>
-        <Text style={styles.qrName}>{fullName || "Your name"}</Text>
-        {user?.groupNumber != null ? (
-          <Text style={styles.qrGroup}>Group {user.groupNumber}</Text>
-        ) : null}
-
-        <View style={styles.qrCodeWrapper}>
-          {user?.email ? (
-            <QRCode
-              value={user.email}
-              size={240}
-              logo={QR_LOGO}
-              logoSize={60}
-              logoMargin={4}
-              logoBorderRadius={8}
-              logoBackgroundColor="#FFFFFF"
-            />
-          ) : null}
-        </View>
-
-        <Text style={styles.qrHint}>
-          Show this code to check in, or scan another attendee&apos;s code to
-          add them to your network.
-        </Text>
-
-        <Pressable
-          onPress={() => void openScanner()}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.scanButton, pressed && styles.pressed]}
-        >
-          <SymbolIcon
-            name="qrcode.viewfinder"
-            fallback="scan-outline"
-            size={20}
-            weight="semibold"
-            color="#FFFFFF"
-          />
-          <Text style={styles.scanButtonText}>Scan a QR code</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
   function renderNetwork() {
     if (loading && userEmail) {
       return <Text style={styles.emptyText}>Loading your network...</Text>;
@@ -329,7 +324,8 @@ export default function Network() {
     if (networkProfiles.length === 0) {
       return (
         <Text style={styles.emptyText}>
-          No connections yet. Exchange QR codes to add people to your network.
+          No connections yet. Exchange codes with someone, or add people from
+          the Directory.
         </Text>
       );
     }
@@ -398,25 +394,140 @@ export default function Network() {
     ));
   }
 
+  function renderDirectoryEmpty() {
+    if (directory === null) {
+      return (
+        <Text style={styles.emptyText}>
+          {directoryError
+            ? `${directoryError}. Please check your connection and try again.`
+            : "Loading the directory..."}
+        </Text>
+      );
+    }
+
+    return (
+      <Text style={styles.emptyText}>
+        {query.trim()
+          ? `No attendees match "${query.trim()}".`
+          : "No attendees yet."}
+      </Text>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.pageTitle}>Network</Text>
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text style={styles.pageTitle}>Network</Text>
+
+          <Pressable
+            onPress={() => void openScanner()}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Scan, tap or show my code"
+            style={({ pressed }) => [
+              styles.scanButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <SymbolIcon
+              name="qrcode.viewfinder"
+              fallback="scan-outline"
+              size={22}
+              weight="semibold"
+              color={theme.colors.primaryBlue}
+            />
+          </Pressable>
+        </View>
 
         <SegmentedTabs
           tabs={NETWORK_TABS}
           value={activeTab}
           onChange={setActiveTab}
         />
+      </View>
 
-        <View style={styles.tabContent}>
-          {activeTab === "qr" ? renderQr() : renderNetwork()}
-        </View>
-      </ScrollView>
+      {activeTab === "network" ? (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          {renderNetwork()}
+        </ScrollView>
+      ) : (
+        <>
+          <View style={styles.search}>
+            <SearchField
+              placeholder="Search by name"
+              value={query}
+              onChangeText={setQuery}
+            />
+          </View>
 
+          <FlatList
+            data={directoryRows}
+            keyExtractor={(item) => item.email}
+            contentContainerStyle={styles.directoryContent}
+            ListEmptyComponent={renderDirectoryEmpty()}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item, index }) => {
+              const name = fullName(item) || item.email;
+              const email = normalizeEmail(item.email);
+              const pending = pendingEmail === email;
+
+              return (
+                <ListRow
+                  first={index === 0}
+                  last={index === directoryRows.length - 1}
+                  divider={index < directoryRows.length - 1}
+                  leading={
+                    <Avatar
+                      firstName={item.firstName}
+                      lastName={item.lastName}
+                    />
+                  }
+                  title={name}
+                  trailing={
+                    networkEmails.has(email) ? (
+                      <View style={styles.addedState}>
+                        <SymbolIcon
+                          name="checkmark.circle.fill"
+                          fallback="checkmark-circle"
+                          size={20}
+                          color={theme.colors.primaryBlue}
+                        />
+                        <Text style={styles.addedText}>Added</Text>
+                      </View>
+                    ) : (
+                      <Pressable
+                        onPress={() => void addFromDirectory(item)}
+                        disabled={pendingEmail !== null}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Add ${name} to your network`}
+                        style={({ pressed }) => [
+                          styles.addPill,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        {pending ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={theme.colors.primaryBlue}
+                          />
+                        ) : (
+                          <Text style={styles.addText}>Add</Text>
+                        )}
+                      </Pressable>
+                    )
+                  }
+                />
+              );
+            }}
+          />
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -426,72 +537,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.backgroundWhite,
   },
-  content: {
+  header: {
     paddingHorizontal: 20,
     paddingTop: 40,
-    paddingBottom: 40,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
   },
   pageTitle: {
     fontSize: 29,
     fontWeight: "700",
     letterSpacing: 0.4,
     color: theme.colors.textPrimary,
-    marginBottom: 20,
-  },
-  tabContent: {
-    marginTop: 32,
-  },
-  // QR view
-  qrSection: {
-    alignItems: "center",
-    paddingTop: 16,
-  },
-  qrName: {
-    fontSize: 28,
-    fontWeight: "700",
-    letterSpacing: -0.4,
-    color: theme.colors.textPrimary,
-  },
-  qrGroup: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: theme.colors.labelSecondary,
-    marginTop: 4,
-  },
-  qrCodeWrapper: {
-    marginTop: 32,
-    marginBottom: 28,
-    padding: 20,
-    borderRadius: 24,
-    backgroundColor: theme.colors.backgroundWhite,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
-  },
-  qrHint: {
-    fontSize: 15,
-    lineHeight: 21,
-    color: theme.colors.labelSecondary,
-    textAlign: "center",
-    paddingHorizontal: 24,
-    marginBottom: 28,
   },
   scanButton: {
-    flexDirection: "row",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
-    gap: 8,
-    backgroundColor: theme.colors.primaryBlue,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 999,
+    justifyContent: "center",
+    backgroundColor: theme.colors.fillSecondary,
   },
-  scanButtonText: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "600",
-    letterSpacing: -0.3,
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 40,
   },
   // Network view
   emptyText: {
@@ -553,6 +626,42 @@ const styles = StyleSheet.create({
   },
   socialButton: {
     flex: 1,
+  },
+  // Directory view
+  search: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 12,
+  },
+  directoryContent: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 40,
+  },
+  addPill: {
+    minWidth: 64,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: theme.colors.backgroundWhite,
+  },
+  addText: {
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: -0.2,
+    color: theme.colors.primaryBlue,
+  },
+  addedState: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  addedText: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: theme.colors.labelSecondary,
   },
   pressed: {
     opacity: 0.7,

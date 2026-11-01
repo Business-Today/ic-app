@@ -16,6 +16,8 @@ import type { NfcReaderState } from "@/hooks/use-nfc-reader";
 
 type Props = {
   state: NfcReaderState;
+  /** What a tap does, which sets the wording. Defaults to checking in. */
+  purpose?: "checkIn" | "network";
   /** One line under the status, e.g. the session being checked into. */
   hint?: string;
   /** Extra content (feedback, counts) shown under the hint. */
@@ -28,7 +30,9 @@ type Props = {
 const RING_SIZE = 250;
 const ICON_DISC = 96;
 
-function describe(state: NfcReaderState) {
+function describe(state: NfcReaderState, purpose: "checkIn" | "network") {
+  const network = purpose === "network";
+
   switch (state) {
     case "checking":
       return { title: "Preparing NFC", body: "One moment." };
@@ -41,7 +45,12 @@ function describe(state: NfcReaderState) {
             : "Against the back of the phone. Reading stays on while this is open.",
       };
     case "stopped":
-      return { title: "Paused", body: "Start again to keep checking people in." };
+      return {
+        title: "Paused",
+        body: network
+          ? "Start again to keep adding people."
+          : "Start again to keep checking people in.",
+      };
     case "disabled":
       return {
         title: "NFC is off",
@@ -50,11 +59,18 @@ function describe(state: NfcReaderState) {
     case "unavailable":
       return {
         title: "NFC not available",
-        body: "This device or build cannot read tags. Use QR or manual check-in instead.",
+        body: network
+          ? "This device or build cannot read tags. Use QR or the Directory instead."
+          : "This device or build cannot read tags. Use QR or manual check-in instead.",
       };
     case "idle":
     default:
-      return { title: "Tap NFC Tags", body: "Start reading to check people in." };
+      return {
+        title: "Tap NFC Tags",
+        body: network
+          ? "Start reading to add people."
+          : "Start reading to check people in.",
+      };
   }
 }
 
@@ -65,6 +81,7 @@ function describe(state: NfcReaderState) {
  */
 export default function NfcTapView({
   state,
+  purpose = "checkIn",
   hint,
   footer,
   onStart,
@@ -102,7 +119,7 @@ export default function NfcTapView({
     };
   });
 
-  const status = describe(state);
+  const status = describe(state, purpose);
   const problem = state === "disabled" || state === "unavailable";
 
   return (

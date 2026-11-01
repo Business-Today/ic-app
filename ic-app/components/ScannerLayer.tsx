@@ -16,6 +16,8 @@ type Props = {
   title?: string;
   hint?: string;
   footer?: ReactNode;
+  /** Enables the NFC tab; mounted only while that tab is showing. */
+  nfc?: ReactNode;
   /** Enables the Scan / My Code switch. */
   myCode?: MyCode;
   /** The interface that slides down to reveal the camera. */
@@ -32,6 +34,7 @@ export default function ScannerLayer({
   title,
   hint,
   footer,
+  nfc,
   myCode,
   children,
 }: Props) {
@@ -47,6 +50,7 @@ export default function ScannerLayer({
           title={title}
           hint={hint}
           footer={footer}
+          nfc={nfc}
           myCode={myCode}
         />
       )}

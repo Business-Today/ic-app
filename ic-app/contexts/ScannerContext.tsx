@@ -16,6 +16,8 @@ import { useUser } from "@/contexts/UserContext";
 type ScannerOptions = {
   hint?: string;
   onBarcodeScanned: (event: ScanEvent) => void;
+  /** Adds an NFC tab showing this. */
+  nfc?: ReactNode;
 };
 
 type ScannerApi = {
@@ -64,6 +66,7 @@ export function ScannerProvider({ children }: { children: ReactNode }) {
         onClose={close}
         hint={options?.hint}
         onBarcodeScanned={options?.onBarcodeScanned}
+        nfc={options?.nfc}
         myCode={myCode}
       >
         {children}
