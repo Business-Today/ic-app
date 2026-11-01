@@ -20,7 +20,7 @@ function loadNfc(): NfcModule | null {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     cachedModule = require("react-native-nfc-manager") as NfcModule;
   } catch (error) {
-    console.warn("react-native-nfc-manager is not available in this build:", error);
+    console.log("react-native-nfc-manager is not available in this build:", error);
     cachedModule = null;
   }
 
@@ -81,7 +81,7 @@ export async function getNfcStatus(): Promise<NfcStatus> {
 
     return "ready";
   } catch (error) {
-    console.warn("Could not initialise NFC:", error);
+    console.log("Could not initialise NFC:", error);
     return "unavailable";
   }
 }
@@ -93,7 +93,7 @@ export async function openNfcSettings(): Promise<void> {
   try {
     await nfc.default.goToNfcSetting();
   } catch (error) {
-    console.warn("Could not open NFC settings:", error);
+    console.log("Could not open NFC settings:", error);
   }
 }
 

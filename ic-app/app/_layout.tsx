@@ -146,12 +146,12 @@ function AuthGate() {
 
 export default function RootLayout() {
   return (
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <UserProvider>
-            <AuthGate />
-            <StatusBar style="dark" />
-            <Toast />
-          </UserProvider>
-        </GestureHandlerRootView>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <UserProvider>
+        <AuthGate />
+        <StatusBar style="dark" />
+        <Toast />
+      </UserProvider>
+    </GestureHandlerRootView>
   );
 }

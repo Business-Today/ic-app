@@ -1,4 +1,4 @@
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { useCameraPermissions } from "expo-camera";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -16,9 +16,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import DayTabs from "@/components/DayTabs";
 import ListRow, { ListGroup } from "@/components/ListRow";
 import OutcomeIcon from "@/components/OutcomeIcon";
+import NfcTapView from "@/components/NfcTapView";
+import QrScanContent, { type ScanMode } from "@/components/QrScanContent";
+import RevealLayer from "@/components/RevealLayer";
 import SectionLabel from "@/components/SectionLabel";
 import SymbolIcon from "@/components/SymbolIcon";
 import TimeBlock from "@/components/TimeBlock";
+import { useUser } from "@/contexts/UserContext";
+import { useNfcReader } from "@/hooks/use-nfc-reader";
 import {
   DAY_KEYS,
   buildSpeakerMap,
@@ -40,6 +45,7 @@ import {
   type Session,
   type Speaker,
 } from "@/lib/attendance";
+import { openNfcSettings } from "@/lib/nfc";
 import theme from "@/theme";
 
 const HELP_CONTACT = { name: "Miyu", phone: "412-277-1460" };
@@ -62,8 +68,21 @@ const IDLE_FEEDBACK: ScanFeedback = {
   detail: "Point the camera at an attendee's QR code.",
 };
 
+const IDLE_TAP_FEEDBACK: ScanFeedback = {
+  outcome: null,
+  title: "Ready to tap",
+  detail: "Hold an attendee's tag to the phone.",
+};
+
+type IdleIcon = {
+  name: "qrcode.viewfinder" | "wave.3.right";
+  fallback: "qr-code-outline" | "radio-outline";
+};
+
+
 export default function Attendance() {
   const router = useRouter();
+  const { user } = useUser();
 
   // --- Sessions -----------------------------------------------------------
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -157,8 +176,10 @@ export default function Attendance() {
     [sessions, pickerDay]
   );
 
-  // --- QR scanner ---------------------------------------------------------
-  const [scannerOpen, setScannerOpen] = useState(false);
+  // --- Check-in layer -----------------------------------------------------
+  // One layer behind the screen with Scan / NFC / My Code tabs.
+  const [layerOpen, setLayerOpen] = useState(false);
+  const [layerMode, setLayerMode] = useState<ScanMode>("scan");
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [feedback, setFeedback] = useState<ScanFeedback>(IDLE_FEEDBACK);
   const isScanning = useRef(false);
@@ -182,8 +203,48 @@ export default function Attendance() {
     isScanning.current = false;
     lastScan.current = null;
     setFeedback(IDLE_FEEDBACK);
-    setScannerOpen(true);
+    nfc.stop();
+    setLayerMode("scan");
+    setLayerOpen(true);
   }
+
+  // --- NFC reader ---------------------------------------------------------
+  const nfc = useNfcReader({
+    eventID: selectedId ?? "",
+    eventName: selectedSession?.title ?? "this session",
+    onCheckedIn: () => setCheckedInCount((count) => (count ?? 0) + 1),
+  });
+
+  function openNfc() {
+    if (!selectedSession) return;
+
+    nfc.reset();
+    setLayerMode("nfc");
+    setLayerOpen(true);
+    void nfc.start();
+  }
+
+  // The reader only runs while the NFC tab is showing.
+  function changeLayerMode(mode: ScanMode) {
+    if (mode === layerMode) return;
+
+    if (mode === "nfc") {
+      nfc.reset();
+      void nfc.start();
+    } else {
+      nfc.stop();
+    }
+
+    setLayerMode(mode);
+  }
+
+  function closeLayer() {
+    nfc.stop();
+    setLayerOpen(false);
+  }
+
+  // Tabs stay mounted, so leaving this one has to turn the camera off too.
+  useFocusEffect(useCallback(() => () => setLayerOpen(false), []));
 
   async function handleBarcodeScanned({ data }: { data: string }) {
     if (!selectedId || isScanning.current) return;
@@ -223,347 +284,362 @@ export default function Attendance() {
     ? sessionDetailLine(selectedSession, speakerMap)
     : "";
 
-  return (
-    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.pageTitle}>Attendance</Text>
+  const renderFeedback = (item: ScanFeedback, idleIcon: IdleIcon) => (
+    <View style={styles.feedback}>
+      {item.outcome ? (
+        <OutcomeIcon outcome={item.outcome} size={26} />
+      ) : (
+        <SymbolIcon
+          name={idleIcon.name}
+          fallback={idleIcon.fallback}
+          size={26}
+          color="rgba(255,255,255,0.7)"
+        />
+      )}
+      <View style={styles.feedbackText}>
+        <Text style={styles.feedbackTitle} numberOfLines={1}>
+          {item.title}
+        </Text>
+        <Text style={styles.feedbackDetail} numberOfLines={2}>
+          {item.detail}
+        </Text>
+      </View>
+      <View style={styles.feedbackCount}>
+        <Text style={styles.feedbackCountValue}>{checkedInCount ?? 0}</Text>
+        <Text style={styles.feedbackCountLabel}>checked in</Text>
+      </View>
+    </View>
+  );
 
-        <SectionLabel first>Session</SectionLabel>
+  const staffCode = user?.email
+    ? {
+        value: user.email,
+        name:
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          undefined,
+      }
+    : undefined;
+
+  const nfcFooter = (
+    <>
+      {renderFeedback(nfc.lastTap ?? IDLE_TAP_FEEDBACK, {
+        name: "wave.3.right",
+        fallback: "radio-outline",
+      })}
+      {nfc.lastUnknownTag ? (
         <Pressable
-          onPress={openPicker}
-          disabled={!loaded}
+          onPress={() => {
+            const tagId = nfc.lastUnknownTag;
+            closeLayer();
+            router.push({ pathname: "/assignNfcTag", params: { tagId } });
+          }}
           accessibilityRole="button"
-          accessibilityLabel="Choose a session"
-          style={({ pressed }) => [
-            styles.sessionCard,
-            pressed && styles.pressed,
-          ]}
+          style={({ pressed }) => [styles.linkTag, pressed && styles.pressed]}
         >
-          <View style={styles.sessionText}>
-            {selectedSession ? (
-              <>
-                <Text style={styles.sessionCaption}>
-                  {dayLabels[selectedSession.day as DayKey]} ·{" "}
-                  {formatTimeRange(
-                    selectedSession.startTime,
-                    selectedSession.endTime
-                  )}
-                </Text>
-                <Text style={styles.sessionTitle} numberOfLines={2}>
-                  {selectedSession.title}
-                </Text>
-                {selectedDetail ? (
-                  <Text style={styles.sessionDetail} numberOfLines={1}>
-                    {selectedDetail}
-                  </Text>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <Text style={styles.sessionTitle}>
-                  {loaded ? "Choose a session" : "Loading sessions"}
-                </Text>
-                <Text style={styles.sessionDetail}>
-                  Pick the session you are checking people into.
-                </Text>
-              </>
-            )}
-          </View>
           <SymbolIcon
-            name="chevron.up.chevron.down"
-            fallback="chevron-expand-outline"
-            size={16}
-            weight="semibold"
-            color={theme.colors.labelTertiary}
+            name="tag"
+            fallback="pricetag-outline"
+            size={18}
+            weight="medium"
+            color="#FFFFFF"
           />
+          <Text style={styles.linkTagText}>Link this tag to an attendee</Text>
         </Pressable>
+      ) : null}
+    </>
+  );
 
-        <View style={styles.actions}>
-          <Pressable
-            onPress={() => {
-              if (!sessionParams) return;
-              router.push({ pathname: "/nfcCheckIn", params: sessionParams });
-            }}
-            disabled={!selectedSession}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.primaryButton,
-              !selectedSession && styles.buttonDisabled,
-              pressed && styles.pressed,
-            ]}
-          >
-            <SymbolIcon
-              name="wave.3.right"
-              fallback="radio-outline"
-              size={20}
-              weight="semibold"
-              color="#FFFFFF"
+  return (
+    <RevealLayer
+      open={layerOpen}
+      onClose={closeLayer}
+      renderContent={(revealLayout) => (
+        <QrScanContent
+          layout={revealLayout}
+          active={layerOpen}
+          mode={layerMode}
+          onModeChange={changeLayerMode}
+          onBarcodeScanned={(event) => void handleBarcodeScanned(event)}
+          hint={selectedSession?.title}
+          footer={renderFeedback(feedback, {
+            name: "qrcode.viewfinder",
+            fallback: "qr-code-outline",
+          })}
+          nfc={
+            <NfcTapView
+              state={nfc.state}
+              hint={selectedSession?.title}
+              footer={nfcFooter}
+              onStart={() => void nfc.start()}
+              onStop={nfc.stop}
+              onOpenSettings={() => void openNfcSettings()}
             />
-            <Text style={styles.primaryButtonText}>Tap NFC Tags</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => void openScanner()}
-            disabled={!selectedSession}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              !selectedSession && styles.buttonDisabled,
-              pressed && styles.pressed,
-            ]}
-          >
-            <SymbolIcon
-              name="qrcode.viewfinder"
-              fallback="qr-code-outline"
-              size={20}
-              weight="semibold"
-              color={theme.colors.primaryBlue}
-            />
-            <Text style={styles.secondaryButtonText}>Scan QR Codes</Text>
-          </Pressable>
-        </View>
-
-        <SectionLabel>This Session</SectionLabel>
-        <ListGroup>
-          <ListRow
-            title="Checked in"
-            subtitle="Everyone recorded so far, most recent first"
-            disabled={!selectedSession}
-            divider
-            trailing={
-              <View style={styles.rowTrailing}>
-                <Text style={styles.rowValue}>
-                  {checkedInCount === null ? "" : checkedInCount}
-                </Text>
-                <SymbolIcon
-                  name="chevron.right"
-                  fallback="chevron-forward"
-                  size={14}
-                  weight="semibold"
-                  color={theme.colors.labelTertiary}
-                />
-              </View>
-            }
-            onPress={() => {
-              if (!sessionParams) return;
-              router.push({
-                pathname: "/attendanceRecords",
-                params: sessionParams,
-              });
-            }}
-          />
-          <ListRow
-            title="Check in manually"
-            subtitle="Find someone by name when a tag or code fails"
-            disabled={!selectedSession}
-            onPress={() => {
-              if (!sessionParams) return;
-              router.push({ pathname: "/manualCheckIn", params: sessionParams });
-            }}
-          />
-        </ListGroup>
-
-        <SectionLabel>Attendees</SectionLabel>
-        <ListGroup>
-          <ListRow
-            title="Look up an attendee"
-            subtitle="Every session someone has checked into"
-            divider
-            onPress={() => router.push("/attendeeAttendance")}
-          />
-          <ListRow
-            title="NFC tags"
-            subtitle="Link a tag to each attendee"
-            onPress={() => router.push("/assignNfcTag")}
-          />
-        </ListGroup>
-
-        <Pressable
-          onPress={() => void Linking.openURL(`tel:${HELP_CONTACT.phone}`)}
-          accessibilityRole="button"
-          accessibilityLabel={`Call ${HELP_CONTACT.name}`}
-          hitSlop={8}
-          style={({ pressed }) => [styles.help, pressed && styles.pressed]}
+          }
+          myCode={staffCode}
+        />
+      )}
+    >
+      <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.helpText}>
-            Urgent issue?{" "}
-            <Text style={styles.helpLink}>Call {HELP_CONTACT.name}</Text>
-          </Text>
-        </Pressable>
-      </ScrollView>
+          <Text style={styles.pageTitle}>Attendance</Text>
 
-      {/* Session picker */}
-      <Modal
-        visible={pickerOpen}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setPickerOpen(false)}
-      >
-        <View style={styles.sheet}>
-          <View style={styles.sheetHeader}>
-            <View style={styles.grabber} />
-            <View style={styles.sheetHeaderRow}>
-              <Text style={styles.sheetTitle}>Choose a Session</Text>
-              <Pressable
-                onPress={() => setPickerOpen(false)}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-                style={({ pressed }) => [
-                  styles.sheetClose,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <SymbolIcon
-                  name="xmark"
-                  fallback="close"
-                  size={16}
-                  weight="bold"
-                  color={theme.colors.labelSecondary}
-                />
-              </Pressable>
-            </View>
-            <View style={styles.sheetTabs}>
-              <DayTabs
-                days={DAY_KEYS.map((key) => ({ key, label: dayLabels[key] }))}
-                value={pickerDay}
-                onChange={setPickerDay}
-              />
-            </View>
-          </View>
-
-          <ScrollView
-            contentContainerStyle={styles.sheetContent}
-            showsVerticalScrollIndicator={false}
+          <SectionLabel first>Session</SectionLabel>
+          <Pressable
+            onPress={openPicker}
+            disabled={!loaded}
+            accessibilityRole="button"
+            accessibilityLabel="Choose a session"
+            style={({ pressed }) => [
+              styles.sessionCard,
+              pressed && styles.pressed,
+            ]}
           >
-            {pickerSessions.length === 0 ? (
-              <Text style={styles.emptyText}>No sessions this day.</Text>
-            ) : (
-              <ListGroup>
-                {pickerSessions.map((session, index) => {
-                  const selected = session.optionID === selectedId;
-
-                  return (
-                    <ListRow
-                      key={session.optionID}
-                      title={session.title}
-                      titleLines={2}
-                      subtitle={sessionDetailLine(session, speakerMap)}
-                      leading={
-                        <TimeBlock
-                          startTime={session.startTime}
-                          endTime={session.endTime}
-                        />
-                      }
-                      trailing={
-                        selected ? (
-                          <SymbolIcon
-                            name="checkmark.circle.fill"
-                            fallback="checkmark-circle"
-                            size={22}
-                            color={theme.colors.primaryBlue}
-                          />
-                        ) : null
-                      }
-                      divider={index < pickerSessions.length - 1}
-                      onPress={() => {
-                        setSelectedId(session.optionID);
-                        setPickerOpen(false);
-                      }}
-                    />
-                  );
-                })}
-              </ListGroup>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* QR scanner */}
-      <Modal
-        visible={scannerOpen}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setScannerOpen(false)}
-      >
-        <View style={styles.sheet}>
-          <View style={styles.sheetHeader}>
-            <View style={styles.grabber} />
-            <View style={styles.sheetHeaderRow}>
-              <Text style={styles.sheetTitle}>Scan QR Codes</Text>
-              <Pressable
-                onPress={() => setScannerOpen(false)}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Close scanner"
-                style={({ pressed }) => [
-                  styles.sheetClose,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <SymbolIcon
-                  name="xmark"
-                  fallback="close"
-                  size={16}
-                  weight="bold"
-                  color={theme.colors.labelSecondary}
-                />
-              </Pressable>
+            <View style={styles.sessionText}>
+              {selectedSession ? (
+                <>
+                  <Text style={styles.sessionCaption}>
+                    {dayLabels[selectedSession.day as DayKey]} ·{" "}
+                    {formatTimeRange(
+                      selectedSession.startTime,
+                      selectedSession.endTime
+                    )}
+                  </Text>
+                  <Text style={styles.sessionTitle} numberOfLines={2}>
+                    {selectedSession.title}
+                  </Text>
+                  {selectedDetail ? (
+                    <Text style={styles.sessionDetail} numberOfLines={1}>
+                      {selectedDetail}
+                    </Text>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.sessionTitle}>
+                    {loaded ? "Choose a session" : "Loading sessions"}
+                  </Text>
+                  <Text style={styles.sessionDetail}>
+                    Pick the session you are checking people into.
+                  </Text>
+                </>
+              )}
             </View>
-            <Text style={styles.sheetHint} numberOfLines={1}>
-              {selectedSession?.title}
-            </Text>
-          </View>
+            <SymbolIcon
+              name="chevron.up.chevron.down"
+              fallback="chevron-expand-outline"
+              size={16}
+              weight="semibold"
+              color={theme.colors.labelTertiary}
+            />
+          </Pressable>
 
-          <View style={styles.cameraWrapper}>
-            {scannerOpen && cameraPermission?.granted ? (
-              <CameraView
-                style={styles.flex}
-                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                onBarcodeScanned={(event) => void handleBarcodeScanned(event)}
+          <View style={styles.actions}>
+            <Pressable
+              onPress={openNfc}
+              disabled={!selectedSession}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.primaryButton,
+                !selectedSession && styles.buttonDisabled,
+                pressed && styles.pressed,
+              ]}
+            >
+              <SymbolIcon
+                name="wave.3.right"
+                fallback="radio-outline"
+                size={20}
+                weight="semibold"
+                color="#FFFFFF"
               />
-            ) : null}
-          </View>
+              <Text style={styles.primaryButtonText}>Tap NFC Tags</Text>
+            </Pressable>
 
-          <View style={styles.feedback}>
-            {feedback.outcome ? (
-              <OutcomeIcon outcome={feedback.outcome} size={26} />
-            ) : (
+            <Pressable
+              onPress={() => void openScanner()}
+              disabled={!selectedSession}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                !selectedSession && styles.buttonDisabled,
+                pressed && styles.pressed,
+              ]}
+            >
               <SymbolIcon
                 name="qrcode.viewfinder"
                 fallback="qr-code-outline"
-                size={26}
-                color={theme.colors.labelSecondary}
+                size={20}
+                weight="semibold"
+                color={theme.colors.primaryBlue}
               />
-            )}
-            <View style={styles.feedbackText}>
-              <Text style={styles.feedbackTitle} numberOfLines={1}>
-                {feedback.title}
-              </Text>
-              <Text style={styles.feedbackDetail} numberOfLines={2}>
-                {feedback.detail}
-              </Text>
-            </View>
-            <View style={styles.feedbackCount}>
-              <Text style={styles.feedbackCountValue}>
-                {checkedInCount ?? 0}
-              </Text>
-              <Text style={styles.feedbackCountLabel}>checked in</Text>
-            </View>
+              <Text style={styles.secondaryButtonText}>Scan QR Codes</Text>
+            </Pressable>
           </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+
+          <SectionLabel>This Session</SectionLabel>
+          <ListGroup>
+            <ListRow
+              title="Checked in"
+              subtitle="Everyone recorded so far, most recent first"
+              disabled={!selectedSession}
+              divider
+              trailing={
+                <View style={styles.rowTrailing}>
+                  <Text style={styles.rowValue}>
+                    {checkedInCount === null ? "" : checkedInCount}
+                  </Text>
+                  <SymbolIcon
+                    name="chevron.right"
+                    fallback="chevron-forward"
+                    size={14}
+                    weight="semibold"
+                    color={theme.colors.labelTertiary}
+                  />
+                </View>
+              }
+              onPress={() => {
+                if (!sessionParams) return;
+                router.push({
+                  pathname: "/attendanceRecords",
+                  params: sessionParams,
+                });
+              }}
+            />
+            <ListRow
+              title="Check in manually"
+              subtitle="Find someone by name when a tag or code fails"
+              disabled={!selectedSession}
+              onPress={() => {
+                if (!sessionParams) return;
+                router.push({ pathname: "/manualCheckIn", params: sessionParams });
+              }}
+            />
+          </ListGroup>
+
+          <SectionLabel>Attendees</SectionLabel>
+          <ListGroup>
+            <ListRow
+              title="Look up an attendee"
+              subtitle="Every session someone has checked into"
+              divider
+              onPress={() => router.push("/attendeeAttendance")}
+            />
+            <ListRow
+              title="NFC tags"
+              subtitle="Link a tag to each attendee"
+              onPress={() => router.push("/assignNfcTag")}
+            />
+          </ListGroup>
+
+          <Pressable
+            onPress={() => void Linking.openURL(`tel:${HELP_CONTACT.phone}`)}
+            accessibilityRole="button"
+            accessibilityLabel={`Call ${HELP_CONTACT.name}`}
+            hitSlop={8}
+            style={({ pressed }) => [styles.help, pressed && styles.pressed]}
+          >
+            <Text style={styles.helpText}>
+              Urgent issue?{" "}
+              <Text style={styles.helpLink}>Call {HELP_CONTACT.name}</Text>
+            </Text>
+          </Pressable>
+        </ScrollView>
+
+        {/* Session picker */}
+        <Modal
+          visible={pickerOpen}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setPickerOpen(false)}
+        >
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <View style={styles.grabber} />
+              <View style={styles.sheetHeaderRow}>
+                <Text style={styles.sheetTitle}>Choose a Session</Text>
+                <Pressable
+                  onPress={() => setPickerOpen(false)}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  style={({ pressed }) => [
+                    styles.sheetClose,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <SymbolIcon
+                    name="xmark"
+                    fallback="close"
+                    size={16}
+                    weight="bold"
+                    color={theme.colors.labelSecondary}
+                  />
+                </Pressable>
+              </View>
+              <View style={styles.sheetTabs}>
+                <DayTabs
+                  days={DAY_KEYS.map((key) => ({ key, label: dayLabels[key] }))}
+                  value={pickerDay}
+                  onChange={setPickerDay}
+                />
+              </View>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {pickerSessions.length === 0 ? (
+                <Text style={styles.emptyText}>No sessions this day.</Text>
+              ) : (
+                <ListGroup>
+                  {pickerSessions.map((session, index) => {
+                    const selected = session.optionID === selectedId;
+
+                    return (
+                      <ListRow
+                        key={session.optionID}
+                        title={session.title}
+                        titleLines={2}
+                        subtitle={sessionDetailLine(session, speakerMap)}
+                        leading={
+                          <TimeBlock
+                            startTime={session.startTime}
+                            endTime={session.endTime}
+                          />
+                        }
+                        trailing={
+                          selected ? (
+                            <SymbolIcon
+                              name="checkmark.circle.fill"
+                              fallback="checkmark-circle"
+                              size={22}
+                              color={theme.colors.primaryBlue}
+                            />
+                          ) : null
+                        }
+                        divider={index < pickerSessions.length - 1}
+                        onPress={() => {
+                          setSelectedId(session.optionID);
+                          setPickerOpen(false);
+                        }}
+                      />
+                    );
+                  })}
+                </ListGroup>
+              )}
+            </ScrollView>
+          </View>
+        </Modal>
+
+      </SafeAreaView>
+    </RevealLayer>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
   screen: {
     flex: 1,
     backgroundColor: theme.colors.backgroundWhite,
@@ -717,11 +793,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  sheetHint: {
-    fontSize: 15,
-    color: theme.colors.labelSecondary,
-    marginTop: 6,
-  },
   sheetTabs: {
     marginTop: 16,
   },
@@ -729,24 +800,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
-  cameraWrapper: {
-    flex: 1,
-    marginHorizontal: 20,
-    borderRadius: 24,
-    overflow: "hidden",
-    backgroundColor: "#000",
-  },
+  // Scanner feedback, drawn over the camera
   feedback: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 40,
     paddingVertical: 16,
     paddingHorizontal: 18,
     borderRadius: 20,
-    backgroundColor: theme.colors.fillSecondary,
+    backgroundColor: "rgba(255,255,255,0.14)",
   },
   feedbackText: {
     flex: 1,
@@ -755,12 +817,12 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "600",
     letterSpacing: -0.3,
-    color: theme.colors.textPrimary,
+    color: "#FFFFFF",
   },
   feedbackDetail: {
     fontSize: 15,
     lineHeight: 20,
-    color: theme.colors.labelSecondary,
+    color: "rgba(255,255,255,0.7)",
     marginTop: 2,
   },
   feedbackCount: {
@@ -770,12 +832,28 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     letterSpacing: -0.4,
-    color: theme.colors.textPrimary,
+    color: "#FFFFFF",
   },
   feedbackCountLabel: {
     fontSize: 11,
     fontWeight: "500",
-    color: theme.colors.labelSecondary,
+    color: "rgba(255,255,255,0.7)",
+  },
+  linkTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 10,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  linkTagText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: -0.3,
   },
   pressed: {
     opacity: 0.7,
