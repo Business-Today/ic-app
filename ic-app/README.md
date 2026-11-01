@@ -9,19 +9,28 @@ Princeton accounts get an **Attendance** button on the Home tab. The hub pre-sel
 session in progress when there is exactly one; otherwise tap the session card to pick a day and
 session. From there:
 
-- **Tap NFC Tags**: hold attendee tags to the phone. Each tap looks up the tag's owner and
+- **Tap Tags**: hold attendee tags to the phone. Each tap looks up the tag's owner and
   records attendance (seminar registration check, no duplicates, `attendanceHistory` row).
-  On iOS the system NFC sheet stays open for about a minute at a time; press *Start Reading* to
+  On iOS the system sheet stays open for about a minute at a time; press *Start Reading* to
   open it again. Tapping an unassigned tag offers a shortcut to link it.
 - **Scan QR Codes**: the camera fallback, with the same check-in rules.
 - **Checked in**: everyone recorded for the session, most recent first, with *Remove* to undo.
 - **Check in manually**: search by name when a tag or code fails.
 - **Look up an attendee**: every session someone has checked into.
-- **NFC tags**: link a tag to an attendee (pick the person, then tap the tag you are handing
+- **Link tags**: link a tag to an attendee (pick the person, then tap the tag you are handing
   them), identify any tag, or remove one. A tag that already belongs to someone asks before
   being moved.
 
+## Network (attendees)
+
+The **Network** tab adds people both ways. **Tap a Badge** reads a friend's badge and adds them
+straight away, and keeps reading until closed. **Scan a QR Code** does the same from their code,
+after asking first. A badge only works once staff have linked it under *Link tags*.
+
 ### NFC setup
+
+The app calls this feature **Tap** everywhere. NFC only appears where the phone's own settings
+use that name, and in code and setup.
 
 1. **Database (one time):** `attendeeProfile.nfcTagId` with a unique index. The column was
    added by hand in the Supabase SQL editor on 2026-10-03.

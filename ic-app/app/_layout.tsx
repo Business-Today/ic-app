@@ -126,6 +126,26 @@ function AuthGate() {
         }}
       />
 
+      <Stack.Screen
+        name="directoryProfile"
+        options={{
+          headerShown: false,
+          presentation: "formSheet",
+          sheetAllowedDetents: [0.6, 1],
+          sheetCornerRadius: 64,
+        }}
+      />
+
+      <Stack.Screen
+        name="sessionRoster"
+        options={{
+          headerShown: false,
+          presentation: "formSheet",
+          sheetAllowedDetents: [0.6, 1],
+          sheetCornerRadius: 64,
+        }}
+      />
+
       <Stack.Screen name="manualCheckIn" options={attendanceScreenOptions} />
 
       <Stack.Screen name="nfcCheckIn" options={attendanceScreenOptions} />

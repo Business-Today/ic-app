@@ -14,7 +14,7 @@ export function describeTagError(
   error: { code?: string; message?: string } | null
 ): string {
   if (error?.code === MISSING_COLUMN_CODE) {
-    return "The database has no nfcTagId column yet. Run the NFC migration in Supabase.";
+    return "The database has no nfcTagId column yet. Run the tag migration in Supabase.";
   }
 
   return error?.message || "Something went wrong";
