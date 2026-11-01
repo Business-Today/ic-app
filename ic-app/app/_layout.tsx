@@ -122,7 +122,6 @@ function AuthGate() {
           headerShown: false,
           presentation: "formSheet",
           sheetAllowedDetents: [0.6, 1],
-          sheetGrabberVisible: true,
           sheetCornerRadius: 64,
         }}
       />
