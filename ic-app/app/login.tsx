@@ -70,17 +70,13 @@ export default function Login() {
 
   const sendLoginCode = async (isResend = false) => {
     if (!normalizedEmail) {
-      Alert.alert("Missing email", "Enter your school email.");
-      return;
-    }
-
-    if (!normalizedEmail.endsWith("@princeton.edu")) {
       Alert.alert(
-        "Use your school email",
-        "Please use your @princeton.edu email address."
+        "Missing email",
+        "Enter the email you used for your application."
       );
       return;
     }
+
 
     setLoading(true);
 
