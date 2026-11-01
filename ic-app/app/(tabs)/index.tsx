@@ -16,6 +16,7 @@ import SegmentedTabs from "@/components/SegmentedTabs";
 import SymbolIcon from "@/components/SymbolIcon";
 import { emergencyContacts } from "@/constants/emergencyContacts";
 import { useUser } from "@/contexts/UserContext";
+import { fullName } from "@/lib/attendance";
 import { supabase } from "@/lib/supabase";
 import theme from "@/theme";
 
@@ -28,16 +29,18 @@ type ScheduleItem = {
   day: string;
   type: string;
   idSpeaker: string;
+  speakers?: Speaker[];
 };
 
 type Speaker = {
   id: string;
-  firstName: string;
-  lastName: string;
-  title: string;
-  company: string;
-  event: string;
-  day: string;
+  firstName: string | null;
+  lastName: string | null;
+  title: string | null;
+  company: string | null;
+  bio: string | null;
+  event: string | null;
+  day: string | null;
 };
 
 type AttendeeSchedule = {
@@ -90,8 +93,6 @@ export default function Home() {
     useUser();
 
   const router = useRouter();
-
-  const canTakeAttendance = !!user?.email?.endsWith("@princeton.edu");
 
   const [activeTab, setActiveTab] = useState<HomeTab>("schedule");
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
@@ -234,7 +235,7 @@ export default function Home() {
       if (speakerIds.length > 0) {
         const { data: speakerData, error: speakerError } = await supabase
           .from("speakerProfile")
-          .select("id, firstName, lastName, title, company, event, day")
+          .select("id, firstName, lastName, title, company, bio, event, day")
           .in("id", speakerIds);
 
         if (speakerError) {
@@ -392,10 +393,12 @@ export default function Home() {
             const expanded = event.optionID === expandedEventId;
             const start = splitTime(event.startTime);
             const end = splitTime(event.endTime);
+            const hasSpeakers = Boolean(event.speakers?.length);
 
             return (
               <Pressable
                 key={event.optionID}
+                disabled={!hasSpeakers}
                 onPress={() =>
                   setExpandedEventId(expanded ? null : event.optionID)
                 }
@@ -441,7 +444,7 @@ export default function Home() {
                         styles.sessionTitle,
                         highlighted && styles.textOnBlue,
                       ]}
-                      numberOfLines={expanded ? undefined : 1}
+                      numberOfLines={expanded || !hasSpeakers ? undefined : 1}
                     >
                       {event.title ?? "Untitled session"}
                     </Text>
@@ -450,34 +453,88 @@ export default function Home() {
                         styles.sessionLocation,
                         highlighted && styles.textOnBlueMuted,
                       ]}
-                      numberOfLines={expanded ? undefined : 1}
+                      numberOfLines={expanded || !hasSpeakers ? undefined : 1}
                     >
                       {event.location || "Location TBD"}
                     </Text>
                   </View>
 
-                  <SymbolIcon
-                    name={expanded ? "chevron.down" : "chevron.right"}
-                    fallback={expanded ? "chevron-down" : "chevron-forward"}
-                    size={16}
-                    weight="semibold"
-                    color={
-                      highlighted
-                        ? "rgba(255,255,255,0.8)"
-                        : theme.colors.labelTertiary
-                    }
-                  />
+                  {hasSpeakers ? (
+                    <SymbolIcon
+                      name={expanded ? "chevron.down" : "chevron.right"}
+                      fallback={expanded ? "chevron-down" : "chevron-forward"}
+                      size={16}
+                      weight="semibold"
+                      color={
+                        highlighted
+                          ? "rgba(255,255,255,0.8)"
+                          : theme.colors.labelTertiary
+                      }
+                    />
+                  ) : null}
                 </View>
 
-                {expanded && event.idSpeaker ? (
-                  <Text
-                    style={[
-                      styles.sessionSpeakers,
-                      highlighted && styles.textOnBlueMuted,
-                    ]}
-                  >
-                    {event.idSpeaker}
-                  </Text>
+                {expanded && event.speakers?.length ? (
+                  <View style={styles.sessionSpeakers}>
+                    {event.speakers.map((speaker) => {
+                      const hasBio = Boolean(speaker.bio?.trim());
+
+                      return (
+                        <Pressable
+                          key={speaker.id}
+                          disabled={!hasBio}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/speakerDetail",
+                              params: { id: speaker.id },
+                            })
+                          }
+                          accessibilityRole={hasBio ? "button" : undefined}
+                          accessibilityLabel={
+                            hasBio ? `View bio for ${fullName(speaker)}` : undefined
+                          }
+                          style={({ pressed }) => [
+                            styles.speakerRow,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <View style={styles.speakerText}>
+                            <Text
+                              style={[
+                                styles.speakerName,
+                                highlighted && styles.textOnBlue,
+                              ]}
+                            >
+                              {fullName(speaker)}
+                            </Text>
+                            {speaker.company ? (
+                              <Text
+                                style={[
+                                  styles.speakerCompany,
+                                  highlighted && styles.textOnBlueMuted,
+                                ]}
+                              >
+                                {speaker.company}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {hasBio ? (
+                            <SymbolIcon
+                              name="chevron.right"
+                              fallback="chevron-forward"
+                              size={13}
+                              weight="semibold"
+                              color={
+                                highlighted
+                                  ? "rgba(255,255,255,0.8)"
+                                  : theme.colors.labelTertiary
+                              }
+                            />
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 ) : null}
               </Pressable>
             );
@@ -542,27 +599,6 @@ export default function Home() {
           tabs={HOME_TABS}
           value={activeTab}
           onChange={setActiveTab}
-          trailing={
-            canTakeAttendance ? (
-              <Pressable
-                onPress={() => router.push("/attendance")}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.attendanceButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <SymbolIcon
-                  name="qrcode.viewfinder"
-                  fallback="qr-code-outline"
-                  size={16}
-                  weight="semibold"
-                  color={theme.colors.primaryBlue}
-                />
-                <Text style={styles.attendanceButtonText}>Attendance</Text>
-              </Pressable>
-            ) : null
-          }
         />
 
         <View style={styles.tabContent}>
@@ -591,21 +627,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     color: theme.colors.textPrimary,
     marginBottom: 20,
-  },
-  attendanceButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: theme.colors.fillSecondary,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-  },
-  attendanceButtonText: {
-    color: theme.colors.primaryBlue,
-    fontSize: 15,
-    fontWeight: "600",
-    letterSpacing: -0.2,
   },
   tabContent: {
     marginTop: 32,
@@ -704,11 +725,28 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   sessionSpeakers: {
-    fontSize: 15,
-    lineHeight: 21,
-    color: theme.colors.labelSecondary,
-    marginTop: 12,
+    marginTop: 8,
     marginLeft: 95,
+  },
+  speakerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  speakerText: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  speakerName: {
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: -0.2,
+    color: theme.colors.textPrimary,
+  },
+  speakerCompany: {
+    fontSize: 14,
+    color: theme.colors.labelSecondary,
+    marginTop: 2,
   },
   textOnBlue: {
     color: "#FFFFFF",

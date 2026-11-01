@@ -5,7 +5,6 @@ import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import Toast from "react-native-toast-message";
-
 import HeaderBackButton from "../components/HeaderBackButton";
 import { UserProvider } from "../contexts/UserContext";
 import { supabase } from "../lib/supabase";
@@ -111,13 +110,22 @@ function AuthGate() {
         options={{ headerShown: false }}
       />
 
-      <Stack.Screen name="attendance" options={attendanceScreenOptions} />
-
       <Stack.Screen name="attendanceRecords" options={attendanceScreenOptions} />
 
       <Stack.Screen name="attendeeAttendance" options={attendanceScreenOptions} />
 
       <Stack.Screen name="attendeeDetail" options={attendanceScreenOptions} />
+
+      <Stack.Screen
+        name="speakerDetail"
+        options={{
+          headerShown: false,
+          presentation: "formSheet",
+          sheetAllowedDetents: [0.6, 1],
+          sheetGrabberVisible: true,
+          sheetCornerRadius: 64,
+        }}
+      />
 
       <Stack.Screen name="manualCheckIn" options={attendanceScreenOptions} />
 

@@ -111,7 +111,19 @@ export function useNfcReader({ eventID, eventName, onCheckedIn }: Options) {
         setLastTap({ tagId, ...described });
         hapticFor(described.outcome);
 
-        return `${described.title}: ${described.detail}. Hold the next tag to the phone`;
+        const icon =
+          described.outcome === "failed"
+            ? "❌"
+            : described.outcome === "rejected"
+              ? "⚠️"
+              : "✅";
+
+        return [
+          `${icon} ${described.title.toUpperCase()}`,
+          described.detail,
+          "",
+          "Remove tag. Tap the next one.",
+        ].join("\n");
       } finally {
         busyRef.current = false;
       }
@@ -141,6 +153,7 @@ export function useNfcReader({ eventID, eventName, onCheckedIn }: Options) {
 
     stopListenerRef.current = startTagListener({
       alertMessage: `Hold an attendee's tag to the phone to check in to ${eventName}`,
+      feedbackDurationMs: 1500,
       onTag: handleTag,
       onClosed: (error) => {
         if (error) {

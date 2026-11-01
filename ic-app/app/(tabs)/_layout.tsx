@@ -3,11 +3,15 @@ import { Platform } from "react-native";
 
 import SymbolIcon from "@/components/SymbolIcon";
 import { ScannerProvider } from "@/contexts/ScannerContext";
+import { useUser } from "@/contexts/UserContext";
 import theme from "@/theme";
 
 const ICON_SIZE = 30;
 
 export default function TabLayout() {
+  const { user } = useUser();
+  const canTakeAttendance = !!user?.email?.endsWith("@princeton.edu");
+
   return (
     <ScannerProvider>
       <Tabs
@@ -21,8 +25,8 @@ export default function TabLayout() {
             borderTopWidth: 0,
             elevation: 0,
             shadowOpacity: 0,
-            // Pull the three icons toward the center of the bar.
-            paddingHorizontal: 64,
+            // Pull the icons toward the center of the bar.
+            paddingHorizontal: canTakeAttendance ? 40 : 64,
             height: Platform.OS === "ios" ? 84 : 64,
             paddingTop: 10,
           },
@@ -54,6 +58,25 @@ export default function TabLayout() {
               <SymbolIcon
                 name={focused ? "person.2.fill" : "person.2"}
                 fallback={focused ? "people" : "people-outline"}
+                size={ICON_SIZE}
+                color={color}
+              />
+            ),
+          }}
+        />
+
+        <Tabs.Screen
+          name="attendance"
+          options={{
+            title: "Attendance",
+            // Hidden from the bar for attendees; only staff take attendance.
+            href: canTakeAttendance ? undefined : null,
+            tabBarIcon: ({ color, focused }) => (
+              <SymbolIcon
+                name={focused ? "checkmark.circle.fill" : "checkmark.circle"}
+                fallback={
+                  focused ? "checkmark-circle" : "checkmark-circle-outline"
+                }
                 size={ICON_SIZE}
                 color={color}
               />

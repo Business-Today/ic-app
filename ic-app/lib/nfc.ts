@@ -27,6 +27,17 @@ function loadNfc(): NfcModule | null {
   return cachedModule;
 }
 
+export type TagListenerOptions = {
+  alertMessage: string;
+
+  onTag: (tagId: string) => Promise<string | void> | string | void;
+
+  /** How long to display a result before scanning again on iOS. */
+  feedbackDurationMs?: number;
+
+  onClosed?: (error?: unknown) => void;
+};
+
 export type NfcStatus = "ready" | "unavailable" | "disabled";
 
 /**
@@ -86,20 +97,6 @@ export async function openNfcSettings(): Promise<void> {
   }
 }
 
-export type TagListenerOptions = {
-  /** Text shown in the iOS system NFC sheet while waiting for a tag. */
-  alertMessage: string;
-  /**
-   * Called for every tag tapped. The returned string (if any) replaces the
-   * iOS sheet text so staff get feedback without looking away from the sheet.
-   */
-  onTag: (tagId: string) => Promise<string | void> | string | void;
-  /**
-   * Called once when the session ends for a reason other than `stop()`:
-   * the iOS 60 second timeout, the user dismissing the sheet, or an error.
-   */
-  onClosed?: (error?: unknown) => void;
-};
 
 type ListenerState = { active: boolean };
 
@@ -183,12 +180,20 @@ async function runIosSession(
 
         if (message) {
           await NfcManager.setAlertMessageIOS(message).catch(() => {});
+
+          const durationMs = options.feedbackDurationMs ?? 0;
+
+          if (durationMs > 0 && state.active) {
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, durationMs);
+            });
+          }
         }
       }
 
       if (!state.active) break;
 
-      // Keep the same session open and wait for the next tag.
+      // Resume scanning only after the result-display pause.
       await NfcManager.restartTechnologyRequestIOS();
     }
   } catch (error) {
