@@ -14,6 +14,8 @@ type Props<T extends string> = {
   onChange: (key: T) => void;
   /** Optional extra content rendered after the pills, inside the same bar. */
   trailing?: ReactNode;
+  /** Centre the pills when they fit; they still scroll when they don't. */
+  centered?: boolean;
 };
 
 /**
@@ -25,13 +27,14 @@ export default function SegmentedTabs<T extends string>({
   value,
   onChange,
   trailing,
+  centered = false,
 }: Props<T>) {
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       style={styles.bleed}
-      contentContainerStyle={styles.row}
+      contentContainerStyle={[styles.row, centered && styles.rowCentered]}
     >
       {tabs.map((tab) => {
         const selected = tab.key === value;
@@ -69,6 +72,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     paddingHorizontal: 20,
+  },
+  rowCentered: {
+    flexGrow: 1,
+    justifyContent: "center",
   },
   pill: {
     paddingHorizontal: 18,

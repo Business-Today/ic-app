@@ -1,5 +1,6 @@
 import { useCameraPermissions } from "expo-camera";
-import { useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -14,12 +15,34 @@ import QRCode from "react-native-qrcode-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/components/Button";
+import NfcTapView, { type TapCopy } from "@/components/NfcTapView";
+import OutcomeIcon from "@/components/OutcomeIcon";
+import ScannerLayer, { type ScanMode } from "@/components/ScannerLayer";
 import SegmentedTabs from "@/components/SegmentedTabs";
 import SymbolIcon from "@/components/SymbolIcon";
-import { useScanner } from "@/contexts/ScannerContext";
+import { QR_LOGO_SVG } from "@/constants/qrLogo";
 import { useUser } from "@/contexts/UserContext";
+import { useTagReader, type TapResult } from "@/hooks/use-nfc-reader";
+import { normalizeEmail, parseEmails } from "@/lib/attendance";
+import { openNfcSettings } from "@/lib/nfc";
+import type { TaggedAttendee } from "@/lib/nfcTags";
 import { supabase } from "@/lib/supabase";
 import theme from "@/theme";
+
+// A code still in front of the camera is read many times a second. Ignore
+// repeats of the same code for this long after its result is dismissed.
+const REPEAT_WINDOW_MS = 4000;
+
+const BADGE_TAP_COPY: TapCopy = {
+  idleTitle: "Tap a Badge",
+  idleBody: "Start reading to add people to your network.",
+  holdTitle: "Hold a badge to the phone",
+  readingTitle: "Reading Badges",
+  stoppedBody: "Start again to keep adding people.",
+  unavailableBody: "This phone cannot read badges. Scan their QR code instead.",
+};
+
+const BADGE_RING_SIZE = 180;
 
 type NetworkProfile = {
   email: string;
@@ -39,8 +62,6 @@ const NETWORK_TABS: { key: NetworkTab; label: string }[] = [
   { key: "qr", label: "QR" },
   { key: "network", label: "Network" },
 ];
-
-const QR_LOGO = require("../../assets/images/bt_mark.png");
 
 function getProfileImageUrl(profilePictureUrl: string | null) {
   return supabase.storage
@@ -64,9 +85,84 @@ async function openProfileLink(url: string, label: string) {
   await Linking.openURL(normalizedUrl);
 }
 
+type AddResult = "added" | "already" | "failed";
+
+/** Adds one email to an attendee's network. */
+async function addConnection(
+  ownerEmail: string,
+  connectionEmail: string
+): Promise<AddResult> {
+  const { data: owner, error: fetchError } = await supabase
+    .from("attendeeProfile")
+    .select("network")
+    .eq("email", ownerEmail)
+    .single();
+
+  if (fetchError) {
+    console.error("Could not load network:", fetchError);
+    return "failed";
+  }
+
+  const connections = parseEmails(owner?.network);
+
+  if (connections.includes(connectionEmail)) return "already";
+
+  const { error: updateError } = await supabase
+    .from("attendeeProfile")
+    .update({ network: [...connections, connectionEmail].join(",") })
+    .eq("email", ownerEmail);
+
+  if (updateError) {
+    console.error("Could not update network:", updateError);
+    return "failed";
+  }
+
+  return "added";
+}
+
+/**
+ * Connects two attendees both ways from a tapped badge. There is no prompt:
+ * the iOS sheet blocks touches, and holding up a badge already says who.
+ */
+async function connectFromBadge(
+  myEmail: string,
+  attendee: TaggedAttendee
+): Promise<TapResult> {
+  const name = `${attendee.firstName} ${attendee.lastName}`;
+
+  if (normalizeEmail(attendee.email) === myEmail) {
+    return {
+      outcome: "rejected",
+      title: "That's your badge",
+      detail: "Tap another attendee's badge instead.",
+    };
+  }
+
+  const result = await addConnection(myEmail, attendee.email);
+
+  if (result === "failed") {
+    return {
+      outcome: "failed",
+      title: "Could not add",
+      detail: `${name} was not added. Try again.`,
+    };
+  }
+
+  if (result === "already") {
+    return {
+      outcome: "duplicate",
+      title: "Already connected",
+      detail: `${attendee.firstName} is already in your network.`,
+    };
+  }
+
+  await addConnection(attendee.email, myEmail);
+
+  return { outcome: "success", title: "Added to your network", detail: name };
+}
+
 export default function Network() {
   const { user } = useUser();
-  const scanner = useScanner();
 
   const [activeTab, setActiveTab] = useState<NetworkTab>("qr");
 
@@ -139,27 +235,65 @@ export default function Network() {
   }, [userEmail, refreshKey]);
 
   // --- QR scanner ---------------------------------------------------------
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [layerMode, setLayerMode] = useState<ScanMode>("scan");
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const isScanning = useRef(false);
+  const lastScan = useRef<{ email: string; at: number } | null>(null);
 
   function resetScanner() {
+    if (lastScan.current) lastScan.current.at = Date.now();
     isScanning.current = false;
   }
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (isScanning.current) return;
+
+    const email = normalizeEmail(data);
+    const at = Date.now();
+    const last = lastScan.current;
+
+    if (last && last.email === email && at - last.at < REPEAT_WINDOW_MS) {
+      return;
+    }
+
     isScanning.current = true;
+    lastScan.current = { email, at };
+
+    if (user?.email && email === normalizeEmail(user.email)) {
+      Alert.alert("That's your code", "Scan another attendee's code instead.", [
+        { text: "OK", onPress: resetScanner },
+      ]);
+      return;
+    }
 
     const { data: attendee, error } = await supabase
       .from("attendeeProfile")
       .select("firstName, lastName, email")
-      .eq("email", data)
-      .single();
+      .eq("email", email)
+      .maybeSingle();
 
-    if (error || !attendee) {
+    if (error) {
+      console.error("Could not look up attendee:", error);
+      Alert.alert("Error", "Could not look up this QR code. Please try again.", [
+        { text: "OK", onPress: resetScanner },
+      ]);
+      return;
+    }
+
+    if (!attendee) {
       Alert.alert("QR Code Error", "No profile found for this QR code.", [
         { text: "OK", onPress: resetScanner },
       ]);
+      return;
+    }
+
+    if (networkProfiles.some((profile) => profile.email === attendee.email)) {
+      Alert.alert(
+        "Already connected",
+        `${attendee.firstName} is already in your network.`,
+        [{ text: "OK", onPress: resetScanner }]
+      );
       return;
     }
 
@@ -177,63 +311,25 @@ export default function Network() {
               return;
             }
 
-            const { data: me, error: fetchError } = await supabase
-              .from("attendeeProfile")
-              .select("network")
-              .eq("email", user.email)
-              .single();
+            const myEmail = normalizeEmail(user.email);
+            const added = await addConnection(myEmail, attendee.email);
 
-            if (fetchError) {
-              console.log(fetchError);
-              Alert.alert("Error", "Failed to fetch your network.");
+            if (added === "failed") {
+              Alert.alert("Error", "Failed to add profile to network.");
               resetScanner();
               return;
             }
 
-            const currentConnections =
-              typeof me?.network === "string" ? me.network : "";
-
-            const updatedConnections =
-              currentConnections.trim() === ""
-                ? attendee.email
-                : `${currentConnections},${attendee.email}`;
-
-            const { error: updateError } = await supabase
-              .from("attendeeProfile")
-              .update({ network: updatedConnections })
-              .eq("email", user.email);
-
             // Add the current user to the scanned attendee's network too.
-            const { data: theirs } = await supabase
-              .from("attendeeProfile")
-              .select("network")
-              .eq("email", attendee.email)
-              .single();
+            await addConnection(attendee.email, myEmail);
 
-            const theirConnections =
-              typeof theirs?.network === "string" ? theirs.network : "";
-
-            const theirUpdatedConnections =
-              theirConnections.trim() === ""
-                ? user.email
-                : `${theirConnections},${user.email}`;
-
-            await supabase
-              .from("attendeeProfile")
-              .update({ network: theirUpdatedConnections })
-              .eq("email", attendee.email);
-
-            if (updateError) {
-              console.log(updateError);
-              Alert.alert("Error", "Failed to add profile to network.");
-            } else {
-              Alert.alert(
-                "Success",
-                `${attendee.firstName} added to your network!`
-              );
-              setRefreshKey((key) => key + 1);
-            }
-
+            // Close first: the code is still in view and would prompt again.
+            setScannerOpen(false);
+            Alert.alert(
+              "Success",
+              `${attendee.firstName} added to your network!`
+            );
+            setRefreshKey((key) => key + 1);
             resetScanner();
           },
         },
@@ -255,28 +351,84 @@ export default function Network() {
       }
     }
 
+    lastScan.current = null;
     resetScanner();
-    scanner.open({
-      hint: "Point your camera at another attendee's code.",
-      // Go through the ref so the scanner always calls the latest handler.
-      onBarcodeScanned: (event) => void handleScanRef.current(event),
-    });
+    tap.stop();
+    setLayerMode("scan");
+    setScannerOpen(true);
   }
 
-  // The scanner keeps the handler it was opened with; this ref lets that
-  // handler see current state without reopening.
-  const handleScanRef = useRef(handleBarcodeScanned);
+  // --- Badge tapping ------------------------------------------------------
+  const tap = useTagReader({
+    alertMessage: "Hold a friend's badge to the phone to add them to your network",
+    noun: "badge",
+    unknownDetail: "Ask a staff member to link this badge.",
+    onAttendee: async (attendee) => {
+      if (!user?.email) {
+        return {
+          outcome: "failed",
+          title: "Could not add",
+          detail: "User email not found.",
+        };
+      }
 
-  useEffect(() => {
-    handleScanRef.current = handleBarcodeScanned;
+      const result = await connectFromBadge(
+        normalizeEmail(user.email),
+        attendee
+      );
+
+      if (result.outcome === "success") setRefreshKey((key) => key + 1);
+
+      return result;
+    },
   });
 
-  // --- Views --------------------------------------------------------------
-  function renderQr() {
-    const fullName = [user?.firstName, user?.lastName]
-      .filter(Boolean)
-      .join(" ");
+  function openTap() {
+    tap.reset();
+    setLayerMode("nfc");
+    setScannerOpen(true);
+    void tap.start();
+  }
 
+  // The reader only runs while the Tap tab is showing.
+  function changeLayerMode(mode: ScanMode) {
+    if (mode === layerMode) return;
+
+    if (mode === "nfc") {
+      tap.reset();
+      void tap.start();
+    } else {
+      tap.stop();
+    }
+
+    setLayerMode(mode);
+  }
+
+  function closeLayer() {
+    tap.stop();
+    setScannerOpen(false);
+  }
+
+  // Tabs stay mounted, so leaving this one has to turn the camera off too.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setScannerOpen(false);
+    }, [])
+  );
+
+  // --- Views --------------------------------------------------------------
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+
+  const myCode = user?.email
+    ? {
+        value: user.email,
+        name: fullName || undefined,
+        subtitle:
+          user.groupNumber != null ? `Group ${user.groupNumber}` : undefined,
+      }
+    : undefined;
+
+  function renderQr() {
     return (
       <View style={styles.qrSection}>
         <Text style={styles.qrName}>{fullName || "Your name"}</Text>
@@ -289,7 +441,9 @@ export default function Network() {
             <QRCode
               value={user.email}
               size={240}
-              logo={QR_LOGO}
+              // The logo hides modules; lower levels can't always recover them.
+              ecl="H"
+              logoSVG={QR_LOGO_SVG}
               logoSize={60}
               logoMargin={4}
               logoBorderRadius={8}
@@ -299,24 +453,49 @@ export default function Network() {
         </View>
 
         <Text style={styles.qrHint}>
-          Show this code to check in, or scan another attendee&apos;s code to
-          add them to your network.
+          Show this code to check in. To add someone to your network, tap their
+          badge or scan their code.
         </Text>
 
-        <Pressable
-          onPress={() => void openScanner()}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.scanButton, pressed && styles.pressed]}
-        >
-          <SymbolIcon
-            name="qrcode.viewfinder"
-            fallback="scan-outline"
-            size={20}
-            weight="semibold"
-            color="#FFFFFF"
-          />
-          <Text style={styles.scanButtonText}>Scan a QR code</Text>
-        </Pressable>
+        <View style={styles.addActions}>
+          <Pressable
+            onPress={openTap}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.addButton,
+              styles.tapButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <SymbolIcon
+              name="wave.3.right"
+              fallback="radio-outline"
+              size={20}
+              weight="semibold"
+              color="#FFFFFF"
+            />
+            <Text style={styles.tapButtonText}>Tap a Badge</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => void openScanner()}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.addButton,
+              styles.scanButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <SymbolIcon
+              name="qrcode.viewfinder"
+              fallback="scan-outline"
+              size={20}
+              weight="semibold"
+              color={theme.colors.primaryBlue}
+            />
+            <Text style={styles.scanButtonText}>Scan a QR Code</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -329,7 +508,8 @@ export default function Network() {
     if (networkProfiles.length === 0) {
       return (
         <Text style={styles.emptyText}>
-          No connections yet. Exchange QR codes to add people to your network.
+          No connections yet. Tap a badge or scan a QR code to add people to
+          your network.
         </Text>
       );
     }
@@ -399,25 +579,60 @@ export default function Network() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.pageTitle}>Network</Text>
-
-        <SegmentedTabs
-          tabs={NETWORK_TABS}
-          value={activeTab}
-          onChange={setActiveTab}
+    <ScannerLayer
+      open={scannerOpen}
+      onClose={closeLayer}
+      hint="Point your camera at another attendee's code."
+      onBarcodeScanned={(event) => void handleBarcodeScanned(event)}
+      nfc={
+        <NfcTapView
+          state={tap.state}
+          copy={BADGE_TAP_COPY}
+          compactRingSize={BADGE_RING_SIZE}
+          pillButtons
+          footer={
+            tap.lastTap ? (
+              <View style={styles.tapFeedback}>
+                <OutcomeIcon outcome={tap.lastTap.outcome} size={26} />
+                <View style={styles.tapFeedbackText}>
+                  <Text style={styles.tapFeedbackTitle} numberOfLines={1}>
+                    {tap.lastTap.title}
+                  </Text>
+                  <Text style={styles.tapFeedbackDetail} numberOfLines={2}>
+                    {tap.lastTap.detail}
+                  </Text>
+                </View>
+              </View>
+            ) : null
+          }
+          onStart={() => void tap.start()}
+          onStop={tap.stop}
+          onOpenSettings={() => void openNfcSettings()}
         />
+      }
+      myCode={myCode}
+      mode={layerMode}
+      onModeChange={changeLayerMode}
+    >
+      <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.pageTitle}>Network</Text>
 
-        <View style={styles.tabContent}>
-          {activeTab === "qr" ? renderQr() : renderNetwork()}
-        </View>
-      </ScrollView>
+          <SegmentedTabs
+            tabs={NETWORK_TABS}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
 
-    </SafeAreaView>
+          <View style={styles.tabContent}>
+            {activeTab === "qr" ? renderQr() : renderNetwork()}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </ScannerLayer>
   );
 }
 
@@ -478,20 +693,61 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginBottom: 28,
   },
-  scanButton: {
+  addActions: {
+    alignSelf: "stretch",
+    gap: 10,
+  },
+  addButton: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 8,
-    backgroundColor: theme.colors.primaryBlue,
     paddingHorizontal: 24,
     paddingVertical: 16,
     borderRadius: 999,
   },
-  scanButtonText: {
+  tapButton: {
+    backgroundColor: theme.colors.primaryBlue,
+  },
+  tapButtonText: {
     color: "#FFFFFF",
     fontSize: 17,
     fontWeight: "600",
     letterSpacing: -0.3,
+  },
+  scanButton: {
+    backgroundColor: theme.colors.fillSecondary,
+  },
+  scanButtonText: {
+    color: theme.colors.primaryBlue,
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: -0.3,
+  },
+  // Tap result, drawn over the camera
+  tapFeedback: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  tapFeedbackText: {
+    flex: 1,
+  },
+  tapFeedbackTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: -0.3,
+    color: "#FFFFFF",
+  },
+  tapFeedbackDetail: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 2,
   },
   // Network view
   emptyText: {
