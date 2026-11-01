@@ -108,7 +108,7 @@ type ListenerState = { active: boolean };
 export function startTagListener(options: TagListenerOptions): () => void {
   const nfc = loadNfc();
   if (!nfc) {
-    options.onClosed?.(new Error("NFC is not available in this build"));
+    options.onClosed?.(new Error("Tap is not available in this build"));
     return () => {};
   }
 

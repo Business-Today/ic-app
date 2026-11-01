@@ -17,12 +17,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Avatar from "@/components/Avatar";
 import Button from "@/components/Button";
 import ListRow from "@/components/ListRow";
-import NetworkNfcTab from "@/components/NetworkNfcTab";
+import NfcTapView, { type TapCopy } from "@/components/NfcTapView";
+import OutcomeIcon from "@/components/OutcomeIcon";
+import ScannerLayer, { type ScanMode } from "@/components/ScannerLayer";
 import SearchField from "@/components/SearchField";
 import SegmentedTabs from "@/components/SegmentedTabs";
 import SymbolIcon from "@/components/SymbolIcon";
-import { useScanner } from "@/contexts/ScannerContext";
 import { useUser } from "@/contexts/UserContext";
+import { useTagReader, type TapResult } from "@/hooks/use-nfc-reader";
 import {
   fullName,
   hapticFor,
@@ -36,8 +38,26 @@ import {
   openProfileLink,
   type DirectoryAttendee,
 } from "@/lib/network";
+import { openNfcSettings } from "@/lib/nfc";
+import type { TaggedAttendee } from "@/lib/nfcTags";
 import { supabase } from "@/lib/supabase";
 import theme from "@/theme";
+
+// A code still in front of the camera is read many times a second. Ignore
+// repeats of the same code for this long after its result is dismissed.
+const REPEAT_WINDOW_MS = 4000;
+
+const BADGE_TAP_COPY: TapCopy = {
+  idleTitle: "Tap a Badge",
+  idleBody: "Start reading to add people to your network.",
+  holdTitle: "Hold a badge to the phone",
+  readingTitle: "Reading Badges",
+  stoppedBody: "Start again to keep adding people.",
+  unavailableBody:
+    "This phone cannot read badges. Scan their QR code or use the Directory instead.",
+};
+
+const BADGE_RING_SIZE = 180;
 
 type NetworkProfile = {
   email: string;
@@ -64,10 +84,48 @@ function getProfileImageUrl(profilePictureUrl: string | null) {
     .getPublicUrl(profilePictureUrl ?? "anonymous.jpg").data.publicUrl;
 }
 
+/**
+ * Connects two attendees both ways from a tapped badge. There is no prompt:
+ * the iOS sheet blocks touches, and holding up a badge already says who.
+ */
+async function connectFromBadge(
+  myEmail: string,
+  attendee: TaggedAttendee
+): Promise<TapResult> {
+  const name = fullName(attendee) || attendee.email;
+
+  if (normalizeEmail(attendee.email) === normalizeEmail(myEmail)) {
+    return {
+      outcome: "rejected",
+      title: "That's your badge",
+      detail: "Tap another attendee's badge instead.",
+    };
+  }
+
+  const result = await addToNetwork(myEmail, attendee.email, { mutual: true });
+
+  if (result === "error") {
+    return {
+      outcome: "failed",
+      title: "Could not add",
+      detail: `${name} was not added. Try again.`,
+    };
+  }
+
+  if (result === "already_added") {
+    return {
+      outcome: "duplicate",
+      title: "Already connected",
+      detail: `${name} is already in your network.`,
+    };
+  }
+
+  return { outcome: "success", title: "Added to your network", detail: name };
+}
+
 export default function Network() {
   const router = useRouter();
   const { user } = useUser();
-  const scanner = useScanner();
 
   const [activeTab, setActiveTab] = useState<NetworkTab>("network");
 
@@ -84,7 +142,7 @@ export default function Network() {
   // Also re-fetches when the scanner closes, since someone may have scanned
   // this attendee's code while it was showing, and on focus, since the profile
   // sheet can add someone while it covers this screen.
-  const scannerOpen = scanner.isOpen;
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -200,31 +258,29 @@ export default function Network() {
   }
 
   // --- QR scanner ---------------------------------------------------------
+  const [layerMode, setLayerMode] = useState<ScanMode>("scan");
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const isScanning = useRef(false);
+  const lastScan = useRef<{ email: string; at: number } | null>(null);
 
   function resetScanner() {
+    if (lastScan.current) lastScan.current.at = Date.now();
     isScanning.current = false;
   }
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (isScanning.current) return;
-    isScanning.current = true;
 
     const email = normalizeEmail(data);
+    const at = Date.now();
+    const last = lastScan.current;
 
-    const { data: attendee, error } = await supabase
-      .from("attendeeProfile")
-      .select("firstName, lastName, email")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (error || !attendee) {
-      Alert.alert("QR Code Error", "No profile found for this QR code.", [
-        { text: "OK", onPress: resetScanner },
-      ]);
+    if (last && last.email === email && at - last.at < REPEAT_WINDOW_MS) {
       return;
     }
+
+    isScanning.current = true;
+    lastScan.current = { email, at };
 
     if (!user?.email) {
       Alert.alert("Error", "User email not found.", [
@@ -236,7 +292,28 @@ export default function Network() {
     const myEmail = user.email;
 
     if (email === normalizeEmail(myEmail)) {
-      Alert.alert("That's You", "This is your own QR code.", [
+      Alert.alert("That's your code", "Scan another attendee's code instead.", [
+        { text: "OK", onPress: resetScanner },
+      ]);
+      return;
+    }
+
+    const { data: attendee, error } = await supabase
+      .from("attendeeProfile")
+      .select("firstName, lastName, email")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Could not look up attendee:", error);
+      Alert.alert("Error", "Could not look up this QR code. Please try again.", [
+        { text: "OK", onPress: resetScanner },
+      ]);
+      return;
+    }
+
+    if (!attendee) {
+      Alert.alert("QR Code Error", "No profile found for this QR code.", [
         { text: "OK", onPress: resetScanner },
       ]);
       return;
@@ -267,14 +344,17 @@ export default function Network() {
 
             if (result === "error") {
               Alert.alert("Error", "Failed to add profile to network.");
-            } else {
-              Alert.alert(
-                "Success",
-                `${attendee.firstName} added to your network!`
-              );
-              setRefreshKey((key) => key + 1);
+              resetScanner();
+              return;
             }
 
+            // Close first: the code is still in view and would prompt again.
+            setScannerOpen(false);
+            Alert.alert(
+              "Success",
+              `${attendee.firstName} added to your network!`
+            );
+            setRefreshKey((key) => key + 1);
             resetScanner();
           },
         },
@@ -290,24 +370,73 @@ export default function Network() {
       await requestCameraPermission();
     }
 
+    lastScan.current = null;
     resetScanner();
-    scanner.open({
-      hint: "Point your camera at another attendee's code.",
-      // Go through the ref so the scanner always calls the latest handler.
-      onBarcodeScanned: (event) => void handleScanRef.current(event),
-      nfc: <NetworkNfcTab onAdded={() => setRefreshKey((key) => key + 1)} />,
-    });
+    tap.stop();
+    setLayerMode("scan");
+    setScannerOpen(true);
   }
 
-  // The scanner keeps the handler it was opened with; this ref lets that
-  // handler see current state without reopening.
-  const handleScanRef = useRef(handleBarcodeScanned);
+  // --- Badge tapping ------------------------------------------------------
+  const tap = useTagReader({
+    alertMessage: "Hold a friend's badge to the phone to add them to your network",
+    noun: "badge",
+    unknownDetail: "Ask a staff member to link this badge.",
+    onAttendee: async (attendee) => {
+      if (!user?.email) {
+        return {
+          outcome: "failed",
+          title: "Could not add",
+          detail: "User email not found.",
+        };
+      }
 
-  useEffect(() => {
-    handleScanRef.current = handleBarcodeScanned;
+      const result = await connectFromBadge(user.email, attendee);
+
+      if (result.outcome === "success") setRefreshKey((key) => key + 1);
+
+      return result;
+    },
   });
 
+  // The reader only runs while the Tap tab is showing.
+  function changeLayerMode(mode: ScanMode) {
+    if (mode === layerMode) return;
+
+    if (mode === "nfc") {
+      tap.reset();
+      void tap.start();
+    } else {
+      tap.stop();
+    }
+
+    setLayerMode(mode);
+  }
+
+  function closeLayer() {
+    tap.stop();
+    setScannerOpen(false);
+  }
+
+  // Tabs stay mounted, so leaving this one has to turn the camera off too.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setScannerOpen(false);
+    }, [])
+  );
+
   // --- Views --------------------------------------------------------------
+  const myName = fullName(user ?? {});
+
+  const myCode = user?.email
+    ? {
+        value: user.email,
+        name: myName || undefined,
+        subtitle:
+          user.groupNumber != null ? `Group ${user.groupNumber}` : undefined,
+      }
+    : undefined;
+
   function renderNetwork() {
     if (loading && userEmail) {
       return <Text style={styles.emptyText}>Loading your network...</Text>;
@@ -316,7 +445,7 @@ export default function Network() {
     if (networkProfiles.length === 0) {
       return (
         <Text style={styles.emptyText}>
-          No connections yet. Exchange codes with someone, or add people from
+          No connections yet. Tap a badge, scan a QR code, or add people from
           the Directory.
         </Text>
       );
@@ -407,135 +536,171 @@ export default function Network() {
   }
 
   return (
-    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.pageTitle}>Network</Text>
-
-          <Pressable
-            onPress={() => void openScanner()}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Scan, tap or show my code"
-            style={({ pressed }) => [
-              styles.scanButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <SymbolIcon
-              name="qrcode.viewfinder"
-              fallback="scan-outline"
-              size={22}
-              weight="semibold"
-              color={theme.colors.primaryBlue}
-            />
-          </Pressable>
-        </View>
-
-        <SegmentedTabs
-          tabs={NETWORK_TABS}
-          value={activeTab}
-          onChange={setActiveTab}
+    <ScannerLayer
+      open={scannerOpen}
+      onClose={closeLayer}
+      hint="Point your camera at another attendee's code."
+      onBarcodeScanned={(event) => void handleBarcodeScanned(event)}
+      nfc={
+        <NfcTapView
+          state={tap.state}
+          copy={BADGE_TAP_COPY}
+          compactRingSize={BADGE_RING_SIZE}
+          pillButtons
+          footer={
+            tap.lastTap ? (
+              <View style={styles.tapFeedback}>
+                <OutcomeIcon outcome={tap.lastTap.outcome} size={26} />
+                <View style={styles.tapFeedbackText}>
+                  <Text style={styles.tapFeedbackTitle} numberOfLines={1}>
+                    {tap.lastTap.title}
+                  </Text>
+                  <Text style={styles.tapFeedbackDetail} numberOfLines={2}>
+                    {tap.lastTap.detail}
+                  </Text>
+                </View>
+              </View>
+            ) : null
+          }
+          onStart={() => void tap.start()}
+          onStop={tap.stop}
+          onOpenSettings={() => void openNfcSettings()}
         />
-      </View>
+      }
+      myCode={myCode}
+      mode={layerMode}
+      onModeChange={changeLayerMode}
+    >
+      <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+        <View style={styles.header}>
+          <View style={styles.titleRow}>
+            <Text style={styles.pageTitle}>Network</Text>
 
-      {activeTab === "network" ? (
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          {renderNetwork()}
-        </ScrollView>
-      ) : (
-        <>
-          <View style={styles.search}>
-            <SearchField
-              placeholder="Search by name"
-              value={query}
-              onChangeText={setQuery}
-            />
+            <Pressable
+              onPress={() => void openScanner()}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Scan, tap or show my code"
+              style={({ pressed }) => [
+                styles.scanButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <SymbolIcon
+                name="qrcode.viewfinder"
+                fallback="scan-outline"
+                size={22}
+                weight="semibold"
+                color={theme.colors.primaryBlue}
+              />
+            </Pressable>
           </View>
 
-          <FlatList
-            data={directoryRows}
-            keyExtractor={(item) => item.email}
-            contentContainerStyle={styles.directoryContent}
-            ListEmptyComponent={renderDirectoryEmpty()}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item, index }) => {
-              const name = fullName(item) || item.email;
-              const email = normalizeEmail(item.email);
-              const pending = pendingEmail === email;
+          <SegmentedTabs
+            tabs={NETWORK_TABS}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
+        </View>
 
-              return (
-                <ListRow
-                  first={index === 0}
-                  last={index === directoryRows.length - 1}
-                  divider={index < directoryRows.length - 1}
-                  leading={
-                    <Avatar
-                      firstName={item.firstName}
-                      lastName={item.lastName}
-                    />
-                  }
-                  title={name}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/directoryProfile",
-                      params: {
-                        email,
-                        firstName: item.firstName ?? "",
-                        lastName: item.lastName ?? "",
-                        school: item.school ?? "",
-                        major: item.major ?? "",
-                        linkedin: item.linkedin ?? "",
-                        instagram: item.instagram ?? "",
-                        inNetwork: String(networkEmails.has(email)),
-                      },
-                    })
-                  }
-                  trailing={
-                    networkEmails.has(email) ? (
-                      <View style={styles.addedState}>
-                        <SymbolIcon
-                          name="checkmark.circle.fill"
-                          fallback="checkmark-circle"
-                          size={20}
-                          color={theme.colors.primaryBlue}
-                        />
-                        <Text style={styles.addedText}>Added</Text>
-                      </View>
-                    ) : (
-                      <Pressable
-                        onPress={() => void addFromDirectory(item)}
-                        disabled={pendingEmail !== null}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Add ${name} to your network`}
-                        style={({ pressed }) => [
-                          styles.addPill,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        {pending ? (
-                          <ActivityIndicator
-                            size="small"
+        {activeTab === "network" ? (
+          <ScrollView
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
+            {renderNetwork()}
+          </ScrollView>
+        ) : (
+          <>
+            <View style={styles.search}>
+              <SearchField
+                placeholder="Search by name"
+                value={query}
+                onChangeText={setQuery}
+              />
+            </View>
+
+            <FlatList
+              data={directoryRows}
+              keyExtractor={(item) => item.email}
+              contentContainerStyle={styles.directoryContent}
+              ListEmptyComponent={renderDirectoryEmpty()}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item, index }) => {
+                const name = fullName(item) || item.email;
+                const email = normalizeEmail(item.email);
+                const pending = pendingEmail === email;
+
+                return (
+                  <ListRow
+                    first={index === 0}
+                    last={index === directoryRows.length - 1}
+                    divider={index < directoryRows.length - 1}
+                    leading={
+                      <Avatar
+                        firstName={item.firstName}
+                        lastName={item.lastName}
+                      />
+                    }
+                    title={name}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/directoryProfile",
+                        params: {
+                          email,
+                          firstName: item.firstName ?? "",
+                          lastName: item.lastName ?? "",
+                          school: item.school ?? "",
+                          major: item.major ?? "",
+                          linkedin: item.linkedin ?? "",
+                          instagram: item.instagram ?? "",
+                          inNetwork: String(networkEmails.has(email)),
+                        },
+                      })
+                    }
+                    trailing={
+                      networkEmails.has(email) ? (
+                        <View style={styles.addedState}>
+                          <SymbolIcon
+                            name="checkmark.circle.fill"
+                            fallback="checkmark-circle"
+                            size={20}
                             color={theme.colors.primaryBlue}
                           />
-                        ) : (
-                          <Text style={styles.addText}>Add</Text>
-                        )}
-                      </Pressable>
-                    )
-                  }
-                />
-              );
-            }}
-          />
-        </>
-      )}
-    </SafeAreaView>
+                          <Text style={styles.addedText}>Added</Text>
+                        </View>
+                      ) : (
+                        <Pressable
+                          onPress={() => void addFromDirectory(item)}
+                          disabled={pendingEmail !== null}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Add ${name} to your network`}
+                          style={({ pressed }) => [
+                            styles.addPill,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          {pending ? (
+                            <ActivityIndicator
+                              size="small"
+                              color={theme.colors.primaryBlue}
+                            />
+                          ) : (
+                            <Text style={styles.addText}>Add</Text>
+                          )}
+                        </Pressable>
+                      )
+                    }
+                  />
+                );
+              }}
+            />
+          </>
+        )}
+      </SafeAreaView>
+    </ScannerLayer>
   );
 }
 
@@ -572,6 +737,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 40,
+  },
+  // Tap result, drawn over the camera
+  tapFeedback: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  tapFeedbackText: {
+    flex: 1,
+  },
+  tapFeedbackTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: -0.3,
+    color: "#FFFFFF",
+  },
+  tapFeedbackDetail: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 2,
   },
   // Network view
   emptyText: {

@@ -270,6 +270,72 @@ export async function fetchAttendeesByEmail(
   return (data ?? []) as Attendee[];
 }
 
+export type SessionRoster = {
+  /** Most recent check-in first. */
+  checkedIn: Attendee[];
+  /** Everyone expected at the session who has not checked in, by last name. */
+  notCheckedIn: Attendee[];
+};
+
+// Seminars and workshops are assigned per attendee: `exec1_2` expects everyone
+// whose `exec1` column is 2. Other IDs, like `panel_1`, are for everyone.
+const ASSIGNED_OPTION_ID = /^(exec[1-4]|offsite)_(\d+)$/;
+
+/** Who has and hasn't checked in, or null when it could not be loaded. */
+export async function fetchSessionRoster(
+  eventID: string
+): Promise<SessionRoster | null> {
+  const { data: session, error: sessionError } = await supabase
+    .from("scheduleOptions")
+    .select("emails")
+    .eq("optionID", eventID)
+    .single();
+
+  if (sessionError) {
+    console.error("Could not load check-ins:", sessionError);
+    return null;
+  }
+
+  let expectedQuery = supabase
+    .from("attendeeProfile")
+    .select("firstName, lastName, email")
+    .order("lastName", { ascending: true })
+    .order("firstName", { ascending: true });
+
+  const assigned = eventID.match(ASSIGNED_OPTION_ID);
+
+  if (assigned) {
+    expectedQuery = expectedQuery.eq(assigned[1], assigned[2]);
+  }
+
+  const { data: expected, error: expectedError } = await expectedQuery;
+
+  if (expectedError) {
+    console.error("Could not load expected attendees:", expectedError);
+    return null;
+  }
+
+  const emails = parseEmails(session?.emails);
+  const checkedInEmails = new Set(emails);
+  const profiles = await fetchAttendeesByEmail(emails);
+  const byEmail = new Map(
+    profiles.map((profile) => [normalizeEmail(profile.email), profile])
+  );
+
+  return {
+    // The stored list is chronological, so reversing it puts the latest
+    // check-in on top: the one most likely to need undoing.
+    checkedIn: [...emails]
+      .reverse()
+      .map(
+        (email) => byEmail.get(email) ?? { firstName: "", lastName: "", email }
+      ),
+    notCheckedIn: ((expected ?? []) as Attendee[]).filter(
+      (attendee) => !checkedInEmails.has(normalizeEmail(attendee.email))
+    ),
+  };
+}
+
 export async function searchAttendees(query: string): Promise<Attendee[]> {
   // Commas and parentheses have meaning inside PostgREST filters.
   const term = query.replace(/[,()]/g, " ").trim();

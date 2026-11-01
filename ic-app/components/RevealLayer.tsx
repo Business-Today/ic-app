@@ -39,10 +39,9 @@ type Props = {
   children: ReactNode;
 };
 
-// How much of the lowered interface stays visible, measured from the top of
-// the sheet. The sheet's own safe-area padding sits inside this, so the title
-// row of the page underneath remains in view.
-const PEEK_BELOW_INSET = 84;
+// How much of the lowered interface stays visible above the home indicator:
+// just the sheet's top edge and its grabber.
+const PEEK_ABOVE_INSET = 24;
 const SHEET_RADIUS = 32;
 const SPRING = { damping: 24, stiffness: 240, mass: 1 };
 
@@ -72,7 +71,7 @@ export default function RevealLayer({
   }
 
   // Distance the sheet travels, which is also the height of the exposed area.
-  const travel = Math.max(height - insets.top - PEEK_BELOW_INSET, 1);
+  const travel = Math.max(height - insets.bottom - PEEK_ABOVE_INSET, 1);
 
   // 0 = interface in place, 1 = fully lowered.
   const progress = useSharedValue(0);
@@ -198,7 +197,7 @@ export default function RevealLayer({
         </Animated.View>
       </GestureDetector>
 
-      {visible ? <StatusBar style="light" animated /> : null}
+      {open ? <StatusBar style="light" animated /> : null}
     </View>
   );
 }
@@ -224,7 +223,9 @@ export const layerControlStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#000000",
+    // Shows while the layer fades and when the sheet's spring overshoots, so
+    // it matches the sheet.
+    backgroundColor: "#FFFFFF",
   },
   closeButton: {
     ...layerControlStyles.button,

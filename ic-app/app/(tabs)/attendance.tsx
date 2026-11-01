@@ -1,5 +1,5 @@
 import { useCameraPermissions } from "expo-camera";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useIsFocused, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -17,8 +17,7 @@ import DayTabs from "@/components/DayTabs";
 import ListRow, { ListGroup } from "@/components/ListRow";
 import OutcomeIcon from "@/components/OutcomeIcon";
 import NfcTapView from "@/components/NfcTapView";
-import QrScanContent, { type ScanMode } from "@/components/QrScanContent";
-import RevealLayer from "@/components/RevealLayer";
+import ScannerLayer, { type ScanMode } from "@/components/ScannerLayer";
 import SectionLabel from "@/components/SectionLabel";
 import SymbolIcon from "@/components/SymbolIcon";
 import TimeBlock from "@/components/TimeBlock";
@@ -243,8 +242,47 @@ export default function Attendance() {
     setLayerOpen(false);
   }
 
+  // --- Roster sheet -------------------------------------------------------
+  // The sheet takes focus from this screen, which would otherwise close the
+  // layer and stop the NFC reader. Both are back when the sheet is dismissed.
+  const isFocused = useIsFocused();
+  const openingRoster = useRef(false);
+  const resumeNfc = useRef(false);
+  const startNfc = nfc.start;
+
+  function openRoster() {
+    if (!sessionParams) return;
+
+    openingRoster.current = true;
+    resumeNfc.current = nfc.state === "scanning";
+    router.push({
+      pathname: "/sessionRoster",
+      params: {
+        eventID: sessionParams.eventID,
+        eventName: sessionParams.eventName,
+      },
+    });
+  }
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!resumeNfc.current) return;
+
+      resumeNfc.current = false;
+      void startNfc();
+    }, [startNfc])
+  );
+
   // Tabs stay mounted, so leaving this one has to turn the camera off too.
-  useFocusEffect(useCallback(() => () => setLayerOpen(false), []));
+  useFocusEffect(
+    useCallback(() => {
+      openingRoster.current = false;
+
+      return () => {
+        if (!openingRoster.current) setLayerOpen(false);
+      };
+    }, [])
+  );
 
   async function handleBarcodeScanned({ data }: { data: string }) {
     if (!selectedId || isScanning.current) return;
@@ -285,7 +323,12 @@ export default function Attendance() {
     : "";
 
   const renderFeedback = (item: ScanFeedback, idleIcon: IdleIcon) => (
-    <View style={styles.feedback}>
+    <Pressable
+      onPress={openRoster}
+      accessibilityRole="button"
+      accessibilityLabel={`${checkedInCount ?? 0} checked in. See who has and hasn't checked in.`}
+      style={({ pressed }) => [styles.feedback, pressed && styles.pressed]}
+    >
       {item.outcome ? (
         <OutcomeIcon outcome={item.outcome} size={26} />
       ) : (
@@ -308,7 +351,14 @@ export default function Attendance() {
         <Text style={styles.feedbackCountValue}>{checkedInCount ?? 0}</Text>
         <Text style={styles.feedbackCountLabel}>checked in</Text>
       </View>
-    </View>
+      <SymbolIcon
+        name="chevron.right"
+        fallback="chevron-forward"
+        size={14}
+        weight="semibold"
+        color="rgba(255,255,255,0.7)"
+      />
+    </Pressable>
   );
 
   const staffCode = user?.email
@@ -320,64 +370,55 @@ export default function Attendance() {
       }
     : undefined;
 
-  const nfcFooter = (
-    <>
-      {renderFeedback(nfc.lastTap ?? IDLE_TAP_FEEDBACK, {
-        name: "wave.3.right",
-        fallback: "radio-outline",
-      })}
-      {nfc.lastUnknownTag ? (
-        <Pressable
-          onPress={() => {
-            const tagId = nfc.lastUnknownTag;
-            closeLayer();
-            router.push({ pathname: "/assignNfcTag", params: { tagId } });
-          }}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.linkTag, pressed && styles.pressed]}
-        >
-          <SymbolIcon
-            name="tag"
-            fallback="pricetag-outline"
-            size={18}
-            weight="medium"
-            color="#FFFFFF"
-          />
-          <Text style={styles.linkTagText}>Link this tag to an attendee</Text>
-        </Pressable>
-      ) : null}
-    </>
-  );
+  const linkTagAction = nfc.lastUnknownTag ? (
+    <Pressable
+      onPress={() => {
+        const tagId = nfc.lastUnknownTag;
+        closeLayer();
+        router.push({ pathname: "/assignNfcTag", params: { tagId } });
+      }}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.linkTag, pressed && styles.pressed]}
+    >
+      <SymbolIcon
+        name="tag"
+        fallback="pricetag-outline"
+        size={18}
+        weight="medium"
+        color="#FFFFFF"
+      />
+      <Text style={styles.linkTagText}>Link this tag to an attendee</Text>
+    </Pressable>
+  ) : null;
 
   return (
-    <RevealLayer
+    <ScannerLayer
       open={layerOpen}
       onClose={closeLayer}
-      renderContent={(revealLayout) => (
-        <QrScanContent
-          layout={revealLayout}
-          active={layerOpen}
-          mode={layerMode}
-          onModeChange={changeLayerMode}
-          onBarcodeScanned={(event) => void handleBarcodeScanned(event)}
+      paused={!isFocused}
+      mode={layerMode}
+      onModeChange={changeLayerMode}
+      onBarcodeScanned={(event) => void handleBarcodeScanned(event)}
+      hint={selectedSession?.title}
+      footer={renderFeedback(feedback, {
+        name: "qrcode.viewfinder",
+        fallback: "qr-code-outline",
+      })}
+      nfc={
+        <NfcTapView
+          state={nfc.state}
           hint={selectedSession?.title}
-          footer={renderFeedback(feedback, {
-            name: "qrcode.viewfinder",
-            fallback: "qr-code-outline",
+          footer={renderFeedback(nfc.lastTap ?? IDLE_TAP_FEEDBACK, {
+            name: "wave.3.right",
+            fallback: "radio-outline",
           })}
-          nfc={
-            <NfcTapView
-              state={nfc.state}
-              hint={selectedSession?.title}
-              footer={nfcFooter}
-              onStart={() => void nfc.start()}
-              onStop={nfc.stop}
-              onOpenSettings={() => void openNfcSettings()}
-            />
-          }
-          myCode={staffCode}
+          action={linkTagAction}
+          onStart={() => void nfc.start()}
+          onStop={nfc.stop}
+          onOpenSettings={() => void openNfcSettings()}
         />
-      )}
+      }
+      myCode={staffCode}
     >
       <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
         <ScrollView
@@ -454,7 +495,7 @@ export default function Attendance() {
                 weight="semibold"
                 color="#FFFFFF"
               />
-              <Text style={styles.primaryButtonText}>Tap NFC Tags</Text>
+              <Text style={styles.primaryButtonText}>Tap Tags</Text>
             </Pressable>
 
             <Pressable
@@ -482,7 +523,7 @@ export default function Attendance() {
           <ListGroup>
             <ListRow
               title="Checked in"
-              subtitle="Everyone recorded so far, most recent first"
+              subtitle="See who has and hasn't checked in"
               disabled={!selectedSession}
               divider
               trailing={
@@ -527,7 +568,7 @@ export default function Attendance() {
               onPress={() => router.push("/attendeeAttendance")}
             />
             <ListRow
-              title="NFC tags"
+              title="Link tags"
               subtitle="Link a tag to each attendee"
               onPress={() => router.push("/assignNfcTag")}
             />
@@ -635,7 +676,7 @@ export default function Attendance() {
         </Modal>
 
       </SafeAreaView>
-    </RevealLayer>
+    </ScannerLayer>
   );
 }
 
@@ -844,7 +885,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    marginTop: 10,
     paddingVertical: 14,
     borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.14)",
