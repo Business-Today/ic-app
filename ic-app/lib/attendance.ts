@@ -78,12 +78,16 @@ export function initialsOf(person: {
   return initials || "?";
 }
 
+// Headshots are uploaded as-is, so the extension varies from file to file.
+const SPEAKER_PHOTO_EXTENSIONS = ["jpg", "jpeg", "png"];
+
 /**
- * Where a speaker's headshot would be in the speakerPhotos bucket:
- * firstname_lastname.png, lowercase, with spaces and punctuation as underscores
- * and accents dropped. The file may not exist; Avatar falls back to initials.
+ * Where a speaker's headshot could be in the execPictures bucket:
+ * firstname_lastname.<ext>, lowercase, with spaces and punctuation as
+ * underscores and accents dropped. Avatar tries each URL in order; if none
+ * exists, it falls back to initials.
  */
-export function speakerPhotoUrl(person: {
+export function speakerPhotoUrls(person: {
   firstName?: string | null;
   lastName?: string | null;
 }) {
@@ -96,8 +100,11 @@ export function speakerPhotoUrl(person: {
 
   if (!fileName) return null;
 
-  return supabase.storage.from("speakerPhotos").getPublicUrl(`${fileName}.png`)
-    .data.publicUrl;
+  return SPEAKER_PHOTO_EXTENSIONS.map(
+    (extension) =>
+      supabase.storage.from("execPictures").getPublicUrl(`${fileName}.${extension}`)
+        .data.publicUrl
+  );
 }
 
 // --- Dates -----------------------------------------------------------------

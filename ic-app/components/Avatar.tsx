@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import { initialsOf } from "@/lib/attendance";
@@ -7,8 +8,11 @@ type Props = {
   firstName?: string | null;
   lastName?: string | null;
   size?: number;
-  /** Drawn over the initials, which still show if the photo can't load. */
-  imageUrl?: string | null;
+  /**
+   * Drawn over the initials, which still show if the photo can't load. A list
+   * is tried in order, moving to the next URL whenever one fails.
+   */
+  imageUrl?: string | string[] | null;
 };
 
 /**
@@ -22,6 +26,15 @@ export default function Avatar({
   size = 40,
   imageUrl,
 }: Props) {
+  const [failedUrls, setFailedUrls] = useState<string[]>([]);
+
+  const candidates = Array.isArray(imageUrl)
+    ? imageUrl
+    : imageUrl
+      ? [imageUrl]
+      : [];
+  const uri = candidates.find((url) => !failedUrls.includes(url));
+
   return (
     <View
       style={[
@@ -32,8 +45,13 @@ export default function Avatar({
       <Text style={[styles.initials, { fontSize: size * 0.38 }]}>
         {initialsOf({ firstName, lastName })}
       </Text>
-      {imageUrl ? (
-        <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFill} />
+      {uri ? (
+        <Image
+          key={uri}
+          source={{ uri }}
+          style={StyleSheet.absoluteFill}
+          onError={() => setFailedUrls((failed) => [...failed, uri])}
+        />
       ) : null}
     </View>
   );

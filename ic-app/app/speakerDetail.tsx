@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import Avatar from "@/components/Avatar";
 import SectionLabel from "@/components/SectionLabel";
 import { useUser } from "@/contexts/UserContext";
-import { fullName, speakerPhotoUrl } from "@/lib/attendance";
+import { fullName, speakerPhotoUrls } from "@/lib/attendance";
 import theme from "@/theme";
 
 export default function SpeakerDetail() {
@@ -35,7 +35,7 @@ export default function SpeakerDetail() {
                 firstName={speaker.firstName}
                 lastName={speaker.lastName}
                 size={96}
-                imageUrl={speakerPhotoUrl(speaker)}
+                imageUrl={speakerPhotoUrls(speaker)}
               />
               <Text style={styles.name}>{fullName(speaker)}</Text>
               {role ? <Text style={styles.role}>{role}</Text> : null}
