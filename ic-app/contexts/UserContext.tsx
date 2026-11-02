@@ -25,6 +25,7 @@ type ScheduleEvent = {
   type: string;
   idSpeaker: string;
   speakers?: Speaker[];
+  notScheduled?: boolean;
 };
 
 type Speaker = {
