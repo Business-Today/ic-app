@@ -1,4 +1,7 @@
-import type { Attendee } from "@/lib/attendance";
+import {
+  isEligibleAttendeeEmail,
+  type Attendee,
+} from "@/lib/attendance";
 import { supabase } from "@/lib/supabase";
 
 /**
@@ -51,6 +54,7 @@ export async function searchAttendeesWithTags(
     .or(
       `firstName.ilike.*${term}*,lastName.ilike.*${term}*,email.ilike.*${term}*`
     )
+    .not("email", "ilike", "%@princeton.edu")
     .order("lastName", { ascending: true })
     .order("firstName", { ascending: true })
     .limit(30);
@@ -70,6 +74,7 @@ export async function fetchAttendeeWithTag(
     .from("attendeeProfile")
     .select("email, firstName, lastName, nfcTagId")
     .eq("email", email.trim().toLowerCase())
+    .not("email", "ilike", "%@princeton.edu")
     .maybeSingle<TaggedAttendee>();
 
   if (error) {
@@ -89,6 +94,10 @@ export async function assignTagToAttendee(
   email: string
 ): Promise<{ error: string | null }> {
   const normalizedEmail = email.trim().toLowerCase();
+
+  if (!isEligibleAttendeeEmail(normalizedEmail)) {
+    return { error: "Princeton attendees cannot be linked to NFC tags." };
+  }
 
   const { error: clearError } = await supabase
     .from("attendeeProfile")

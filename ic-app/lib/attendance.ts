@@ -45,6 +45,10 @@ export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+export function isEligibleAttendeeEmail(email: string) {
+  return !normalizeEmail(email).endsWith("@princeton.edu");
+}
+
 /** Unique, normalized emails from the raw comma-separated column value. */
 export function parseEmails(raw: unknown): string[] {
   if (typeof raw !== "string") return [];
@@ -271,7 +275,7 @@ export async function fetchCheckedInEmails(eventID: string): Promise<string[]> {
     return [];
   }
 
-  return parseEmails(data?.emails);
+  return parseEmails(data?.emails).filter(isEligibleAttendeeEmail);
 }
 
 export async function fetchAttendeesByEmail(
@@ -321,6 +325,7 @@ export async function fetchSessionRoster(
   let expectedQuery = supabase
     .from("attendeeProfile")
     .select("firstName, lastName, email")
+    .not("email", "ilike", "%@princeton.edu")
     .order("lastName", { ascending: true })
     .order("firstName", { ascending: true });
 
@@ -337,7 +342,7 @@ export async function fetchSessionRoster(
     return null;
   }
 
-  const emails = parseEmails(session?.emails);
+  const emails = parseEmails(session?.emails).filter(isEligibleAttendeeEmail);
   const checkedInEmails = new Set(emails);
   const profiles = await fetchAttendeesByEmail(emails);
   const byEmail = new Map(
@@ -370,6 +375,7 @@ export async function searchAttendees(query: string): Promise<Attendee[]> {
     .or(
       `firstName.ilike.*${term}*,lastName.ilike.*${term}*,email.ilike.*${term}*`
     )
+    .not("email", "ilike", "%@princeton.edu")
     .order("lastName", { ascending: true })
     .order("firstName", { ascending: true })
     .limit(30);
