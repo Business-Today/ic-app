@@ -2,7 +2,6 @@ import { useCameraPermissions } from "expo-camera";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -10,7 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -27,9 +26,7 @@ import { useUser } from "@/contexts/UserContext";
 import { useTagReader, type TapResult } from "@/hooks/use-nfc-reader";
 import {
   fullName,
-  hapticFor,
   normalizeEmail,
-  type Attendee,
 } from "@/lib/attendance";
 import {
   addToNetwork,
@@ -203,7 +200,6 @@ export default function Network() {
   const [directory, setDirectory] = useState<DirectoryAttendee[] | null>(null);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   // Fetched each time the tab opens, which also retries after a failure.
   useEffect(() => {
@@ -236,26 +232,6 @@ export default function Network() {
 
   // Only adds to this attendee's own list; the other person isn't there to
   // agree, unlike a QR or NFC exchange.
-  async function addFromDirectory(attendee: Attendee) {
-    if (!userEmail || pendingEmail) return;
-
-    const email = normalizeEmail(attendee.email);
-    setPendingEmail(email);
-
-    const result = await addToNetwork(userEmail, email, { mutual: false });
-
-    setPendingEmail(null);
-
-    if (result === "error") {
-      hapticFor("failed");
-      Alert.alert("Error", "Failed to add profile to network.");
-      return;
-    }
-
-    hapticFor("success");
-    setNetworkEmails((previous) => new Set(previous).add(email));
-    setRefreshKey((key) => key + 1);
-  }
 
   // --- QR scanner ---------------------------------------------------------
   const [layerMode, setLayerMode] = useState<ScanMode>("scan");
@@ -445,8 +421,7 @@ export default function Network() {
     if (networkProfiles.length === 0) {
       return (
         <Text style={styles.emptyText}>
-          No connections yet. Tap a badge, scan a QR code, or add people from
-          the Directory.
+          No connections yet. Tap a badge or scan a QR code to connect with someone.
         </Text>
       );
     }
@@ -631,7 +606,6 @@ export default function Network() {
               renderItem={({ item, index }) => {
                 const name = fullName(item) || item.email;
                 const email = normalizeEmail(item.email);
-                const pending = pendingEmail === email;
 
                 return (
                   <ListRow
@@ -654,44 +628,9 @@ export default function Network() {
                           lastName: item.lastName ?? "",
                           school: item.school ?? "",
                           major: item.major ?? "",
-                          linkedin: item.linkedin ?? "",
-                          instagram: item.instagram ?? "",
-                          inNetwork: String(networkEmails.has(email)),
+                          interests: item.interests ?? "",
                         },
                       })
-                    }
-                    trailing={
-                      networkEmails.has(email) ? (
-                        <View style={styles.addedState}>
-                          <SymbolIcon
-                            name="checkmark.circle.fill"
-                            fallback="checkmark-circle"
-                            size={20}
-                            color={theme.colors.primaryBlue}
-                          />
-                          <Text style={styles.addedText}>Added</Text>
-                        </View>
-                      ) : (
-                        <Pressable
-                          onPress={() => void addFromDirectory(item)}
-                          disabled={pendingEmail !== null}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Add ${name} to your network`}
-                          style={({ pressed }) => [
-                            styles.addPill,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          {pending ? (
-                            <ActivityIndicator
-                              size="small"
-                              color={theme.colors.primaryBlue}
-                            />
-                          ) : (
-                            <Text style={styles.addText}>Add</Text>
-                          )}
-                        </Pressable>
-                      )
                     }
                   />
                 );
