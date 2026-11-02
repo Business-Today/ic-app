@@ -30,7 +30,7 @@ const MAP_ROOMS: MapRoom[] = [
   { floor: "concourse", names: ["Concourse H"], rect: { x: 841, y: 711, width: 141, height: 152 } },
 
   // The schedule's plain "Ballroom" means the Grand Ballroom.
-  { floor: "third", names: ["Grand Ballroom", "Ballroom"], rect: { x: 147, y: 389, width: 432, height: 194 } },
+  { floor: "third", names: ["Grand Ballroom"], rect: { x: 147, y: 389, width: 432, height: 194 } },
   { floor: "third", names: ["Grand Ballroom West"], rect: { x: 147, y: 389, width: 146, height: 194 } },
   { floor: "third", names: ["Grand Ballroom East"], rect: { x: 293, y: 389, width: 286, height: 194 } },
   { floor: "third", names: ["Grand Ballroom West Foyer"], rect: { x: 175, y: 218, width: 118, height: 130 } },
@@ -38,7 +38,7 @@ const MAP_ROOMS: MapRoom[] = [
   { floor: "third", names: ["Rotunda"], rect: { x: 918, y: 218, width: 133, height: 149 } },
   { floor: "third", names: ["Mercury Ballroom", "Mercury"], rect: { x: 915, y: 368, width: 140, height: 169 } },
   { floor: "third", names: ["Petit Trianon"], rect: { x: 1130, y: 214, width: 123, height: 151 } },
-  { floor: "third", names: ["Trianon Ballroom", "Trianon"], rect: { x: 1091, y: 365, width: 159, height: 218 } },
+  { floor: "third", names: ["Trianon Ballroom", "Ballroom"], rect: { x: 1091, y: 365, width: 159, height: 218 } },
   { floor: "third", names: ["Rendezvous Trianon", "Rendezvous"], rect: { x: 1089, y: 119, width: 184, height: 93 } },
   { floor: "third", names: ["Promenade"], rect: { x: 607, y: 119, width: 240, height: 93 } },
   { floor: "third", names: ["West Promenade"], rect: { x: 249, y: 157, width: 325, height: 55 } },
