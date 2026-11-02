@@ -152,15 +152,8 @@ export default function NfcCheckIn() {
         pushEntry({ tagId, ...described });
         hapticFor(described.outcome);
 
-        const icon =
-        described.outcome === "failed"
-          ? "❌"
-          : described.outcome === "rejected"
-            ? "⚠️"
-            : "✅";
-
       return [
-        `${icon} ${described.title.toUpperCase()}`,
+        described.title.toUpperCase(),
         described.detail,
         "",
         "Remove tag. Tap the next one.",

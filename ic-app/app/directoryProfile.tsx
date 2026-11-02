@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import Avatar from "@/components/Avatar";
 import ListRow, { ListGroup } from "@/components/ListRow";
 import { fullName } from "@/lib/attendance";
+import { openProfileLink, profileImageUrl } from "@/lib/network";
 import theme from "@/theme";
 
 export default function DirectoryProfile() {
@@ -14,12 +15,25 @@ export default function DirectoryProfile() {
     school?: string;
     major?: string;
     interests?: string;
+    profilePictureUrl?: string;
+    connected?: string;
+    linkedin?: string;
+    instagram?: string;
   }>();
 
   const name = fullName(params) || params.email;
-  const school = params.school?.trim();
-  const major = params.major?.trim();
+  const subtitle = [params.school?.trim(), params.major?.trim()]
+    .filter(Boolean)
+    .join(" · ");
   const interests = params.interests?.trim();
+  // Only connections see these, and the Directory passes nothing for others.
+  const links =
+    params.connected === "true"
+      ? [
+          { label: "LinkedIn", value: params.linkedin?.trim() },
+          { label: "Instagram", value: params.instagram?.trim() },
+        ]
+      : [];
 
   return (
     <>
@@ -34,18 +48,31 @@ export default function DirectoryProfile() {
             firstName={params.firstName}
             lastName={params.lastName}
             size={72}
+            imageUrl={profileImageUrl(params.profilePictureUrl)}
           />
           <Text style={styles.name}>{name}</Text>
-          {school ? <Text style={styles.school}>{school}</Text> : null}
-          {major ? <Text style={styles.major}>{major}</Text> : null}
+          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
 
         <ListGroup>
           <ListRow
             title="Interests"
             subtitle={interests || "Not added"}
-            divider={false}
+            subtitleLines={0}
+            divider={links.length > 0}
           />
+          {links.map(({ label, value }, index) => (
+            <ListRow
+              key={label}
+              title={label}
+              subtitle={value || "Not added"}
+              subtitleLines={1}
+              divider={index < links.length - 1}
+              onPress={
+                value ? () => void openProfileLink(value, label) : undefined
+              }
+            />
+          ))}
         </ListGroup>
       </ScrollView>
 
@@ -95,16 +122,10 @@ const styles = StyleSheet.create({
     marginTop: 16,
     textAlign: "center",
   },
-  school: {
+  subtitle: {
     fontSize: 16,
     color: theme.colors.labelSecondary,
     marginTop: 4,
-    textAlign: "center",
-  },
-  major: {
-    fontSize: 16,
-    color: theme.colors.labelSecondary,
-    marginTop: 2,
     textAlign: "center",
   },
 });

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -17,6 +17,7 @@ import SymbolIcon from "@/components/SymbolIcon";
 import {
   type EmergencyContact
 } from "@/constants/emergencyContacts";
+import { findMapRoom, type MapRoom } from "@/constants/mapRooms";
 import { useUser } from "@/contexts/UserContext";
 import { fullName } from "@/lib/attendance";
 import { supabase } from "@/lib/supabase";
@@ -32,6 +33,7 @@ type ScheduleItem = {
   type: string;
   idSpeaker: string;
   speakers?: Speaker[];
+  notScheduled?: boolean;
 };
 
 type Speaker = {
@@ -47,12 +49,17 @@ type Speaker = {
 
 type AttendeeSchedule = {
   groupNumber: number;
-  offsite: number;
-  exec1: number;
-  exec2: number;
-  exec3: number;
-  exec4: number;
+  offsite: number | null;
+  exec1: number | null;
+  exec2: number | null;
+  exec3: number | null;
+  exec4: number | null;
 };
+
+type ScheduleOption = Pick<
+  ScheduleItem,
+  "optionID" | "title" | "startTime" | "endTime" | "day" | "type"
+>;
 
 type HomeTab = "schedule" | "map" | "emergency";
 
@@ -63,6 +70,34 @@ const HOME_TABS: { key: HomeTab; label: string }[] = [
 ];
 
 const DAY_KEYS = ["day1", "day2", "day3"] as const;
+
+// Time blocks attendees are assigned into: `exec1_2` is for whoever has exec1 = 2.
+const ASSIGNED_BLOCKS = ["exec1", "exec2", "exec3", "exec4", "offsite"] as const;
+
+// Stands in for a block the attendee has no session in. Blocks can mix session
+// types, so it borrows the title and time of the most common option.
+function notScheduledPlaceholder(
+  block: (typeof ASSIGNED_BLOCKS)[number],
+  options: ScheduleOption[]
+): ScheduleItem {
+  const titleCounts = new Map<string, number>();
+
+  options.forEach((option) => {
+    titleCounts.set(option.title, (titleCounts.get(option.title) ?? 0) + 1);
+  });
+
+  const mostCommon = options.reduce((best, option) =>
+    titleCounts.get(option.title)! > titleCounts.get(best.title)! ? option : best
+  );
+
+  return {
+    ...mostCommon,
+    optionID: `${block}_not_scheduled`,
+    location: "",
+    idSpeaker: "",
+    notScheduled: true,
+  };
+}
 
 function isSameDate(a: Date, b: Date) {
   return (
@@ -98,6 +133,9 @@ export default function Home() {
 
   const [activeTab, setActiveTab] = useState<HomeTab>("schedule");
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [focusedRoom, setFocusedRoom] = useState<MapRoom | null>(null);
+
+  const scrollRef = useRef<ScrollView>(null);
 
   const [groupContacts, setGroupContacts] = useState<EmergencyContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
@@ -195,19 +233,18 @@ export default function Home() {
         return;
       }
 
-      const { data: allScheduleRows, error: allScheduleError } = await supabase
+      const { data: optionRows, error: optionsError } = await supabase
         .from("scheduleOptions")
-        .select("optionID")
-        .eq("type", "all");
+        .select("optionID, title, startTime, endTime, day, type")
+        .order("optionID", { ascending: true });
 
-      if (allScheduleError) {
-        console.error(
-          "Could not load all-event schedule option IDs:",
-          allScheduleError
-        );
+      if (optionsError) {
+        console.error("Could not load schedule options:", optionsError);
 
         return;
       }
+
+      const allOptions = (optionRows ?? []) as ScheduleOption[];
 
       const scheduleIds = [
         `exec1_${attendeeSchedule.exec1}`,
@@ -215,7 +252,9 @@ export default function Home() {
         `exec3_${attendeeSchedule.exec3}`,
         `exec4_${attendeeSchedule.exec4}`,
         `offsite_${attendeeSchedule.offsite}`,
-        ...(allScheduleRows ?? []).map((item) => item.optionID),
+        ...allOptions
+          .filter((item) => item.type === "all")
+          .map((item) => item.optionID),
       ];
 
       const uniqueScheduleIds = [...new Set(scheduleIds)];
@@ -233,6 +272,18 @@ export default function Home() {
       }
 
       const rawSchedule = (scheduleData ?? []) as ScheduleItem[];
+
+      const placeholders = ASSIGNED_BLOCKS.flatMap((block) => {
+        const options = allOptions.filter((option) =>
+          option.optionID.startsWith(`${block}_`)
+        );
+        const assignedId = `${block}_${attendeeSchedule[block]}`;
+
+        return options.length === 0 ||
+          options.some((option) => option.optionID === assignedId)
+          ? []
+          : [notScheduledPlaceholder(block, options)];
+      });
 
       const speakerIds = [
         ...new Set(
@@ -265,7 +316,7 @@ export default function Home() {
         return;
       }
 
-      setSchedule(rawSchedule);
+      setSchedule([...rawSchedule, ...placeholders]);
       setSpeakersAll(speakers);
     }
 
@@ -342,11 +393,36 @@ export default function Home() {
       const start = new Date(event.startTime);
       const end = new Date(event.endTime);
 
-      return isSameDate(start, now) && end.getTime() > now.getTime();
+      return (
+        !event.notScheduled &&
+        isSameDate(start, now) &&
+        end.getTime() > now.getTime()
+      );
     });
 
     return current?.optionID ?? null;
   }, [eventsForDay]);
+
+  function changeTab(tab: HomeTab) {
+    if (tab === activeTab) {
+      return;
+    }
+
+    setFocusedRoom(null);
+    setActiveTab(tab);
+  }
+
+  function showRoomOnMap(room: MapRoom) {
+    setFocusedRoom(room);
+    setActiveTab("map");
+  }
+
+  // The schedule can be scrolled well past where the map will sit.
+  useEffect(() => {
+    if (focusedRoom) {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+  }, [focusedRoom]);
 
   async function callContact(name: string, phone: string) {
     if (!phone) {
@@ -482,11 +558,11 @@ export default function Home() {
             const start = splitTime(event.startTime);
             const end = splitTime(event.endTime);
             const hasSpeakers = Boolean(event.speakers?.length);
+            const notScheduled = Boolean(event.notScheduled);
 
             return (
               <Pressable
                 key={event.optionID}
-                disabled={!hasSpeakers}
                 onPress={() =>
                   setExpandedEventId(expanded ? null : event.optionID)
                 }
@@ -502,6 +578,7 @@ export default function Home() {
                       style={[
                         styles.timeText,
                         highlighted && styles.textOnBlue,
+                        notScheduled && styles.textNotScheduled,
                       ]}
                     >
                       {start.time}
@@ -531,8 +608,9 @@ export default function Home() {
                       style={[
                         styles.sessionTitle,
                         highlighted && styles.textOnBlue,
+                        notScheduled && styles.textNotScheduled,
                       ]}
-                      numberOfLines={expanded || !hasSpeakers ? undefined : 1}
+                      numberOfLines={expanded ? undefined : 1}
                     >
                       {event.title ?? "Untitled session"}
                     </Text>
@@ -541,30 +619,30 @@ export default function Home() {
                         styles.sessionLocation,
                         highlighted && styles.textOnBlueMuted,
                       ]}
-                      numberOfLines={expanded || !hasSpeakers ? undefined : 1}
+                      numberOfLines={expanded ? undefined : 1}
                     >
-                      {event.location || "Location TBD"}
+                      {notScheduled
+                        ? "You are not scheduled for this time"
+                        : event.location || "Location TBD"}
                     </Text>
                   </View>
 
-                  {hasSpeakers ? (
-                    <SymbolIcon
-                      name={expanded ? "chevron.down" : "chevron.right"}
-                      fallback={expanded ? "chevron-down" : "chevron-forward"}
-                      size={16}
-                      weight="semibold"
-                      color={
-                        highlighted
-                          ? "rgba(255,255,255,0.8)"
-                          : theme.colors.labelTertiary
-                      }
-                    />
-                  ) : null}
+                  <SymbolIcon
+                    name={expanded ? "chevron.down" : "chevron.right"}
+                    fallback={expanded ? "chevron-down" : "chevron-forward"}
+                    size={16}
+                    weight="semibold"
+                    color={
+                      highlighted
+                        ? "rgba(255,255,255,0.8)"
+                        : theme.colors.labelTertiary
+                    }
+                  />
                 </View>
 
-                {expanded && event.speakers?.length ? (
+                {expanded && (hasSpeakers || mapRoom) ? (
                   <View style={styles.sessionSpeakers}>
-                    {event.speakers.map((speaker) => {
+                    {event.speakers?.map((speaker) => {
                       const hasBio = Boolean(speaker.bio?.trim());
 
                       return (
@@ -622,6 +700,35 @@ export default function Home() {
                         </Pressable>
                       );
                     })}
+
+                    {mapRoom ? (
+                      <Pressable
+                        onPress={() => showRoomOnMap(mapRoom)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Show ${event.location} on map`}
+                        style={({ pressed }) => [
+                          styles.showOnMapRow,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <SymbolIcon
+                          name="map"
+                          fallback="map-outline"
+                          size={18}
+                          color={
+                            highlighted ? "#FFFFFF" : theme.colors.primaryBlue
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.showOnMapText,
+                            highlighted && styles.textOnBlue,
+                          ]}
+                        >
+                          Show on map
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 ) : null}
               </Pressable>
@@ -636,7 +743,7 @@ export default function Home() {
     return (
       <>
         <Text style={styles.sectionTitle}>Conference Map</Text>
-        <ConferenceMap />
+        <ConferenceMap focusRoom={focusedRoom} />
       </>
     );
   }
@@ -720,6 +827,7 @@ export default function Home() {
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
@@ -728,7 +836,7 @@ export default function Home() {
         <SegmentedTabs
           tabs={HOME_TABS}
           value={activeTab}
-          onChange={setActiveTab}
+          onChange={changeTab}
         />
 
         <View style={styles.tabContent}>
@@ -878,11 +986,26 @@ const styles = StyleSheet.create({
     color: theme.colors.labelSecondary,
     marginTop: 2,
   },
+  showOnMapRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+  },
+  showOnMapText: {
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: -0.2,
+    color: theme.colors.primaryBlue,
+  },
   textOnBlue: {
     color: "#FFFFFF",
   },
   textOnBlueMuted: {
     color: "rgba(255,255,255,0.8)",
+  },
+  textNotScheduled: {
+    color: theme.colors.labelSecondary,
   },
   contactList: {
     gap: 12,

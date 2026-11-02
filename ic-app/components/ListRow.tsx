@@ -19,6 +19,10 @@ type Props = {
   first?: boolean;
   last?: boolean;
   titleLines?: number;
+  /** Lines of subtitle to show; 0 shows all of it. */
+  subtitleLines?: number;
+  /** No fill or side padding, with the text at the top of the row. */
+  plain?: boolean;
   accessibilityLabel?: string;
 };
 
@@ -38,6 +42,8 @@ export default function ListRow({
   first,
   last,
   titleLines = 1,
+  subtitleLines = 2,
+  plain,
   accessibilityLabel,
 }: Props) {
   const showChevron = trailing === undefined && onPress !== undefined;
@@ -50,6 +56,7 @@ export default function ListRow({
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [
         styles.row,
+        plain && styles.rowPlain,
         first && styles.first,
         last && styles.last,
         divider && styles.divider,
@@ -59,12 +66,12 @@ export default function ListRow({
     >
       {leading}
 
-      <View style={styles.text}>
+      <View style={[styles.text, plain && styles.textPlain]}>
         <Text style={styles.title} numberOfLines={titleLines}>
           {title}
         </Text>
         {subtitle ? (
-          <Text style={styles.subtitle} numberOfLines={2}>
+          <Text style={styles.subtitle} numberOfLines={subtitleLines}>
             {subtitle}
           </Text>
         ) : null}
@@ -105,6 +112,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: theme.colors.fillSecondary,
   },
+  rowPlain: {
+    paddingVertical: 10,
+    paddingHorizontal: 0,
+    backgroundColor: "transparent",
+  },
   first: {
     borderTopLeftRadius: GROUP_RADIUS,
     borderTopRightRadius: GROUP_RADIUS,
@@ -119,6 +131,9 @@ const styles = StyleSheet.create({
   },
   text: {
     flex: 1,
+  },
+  textPlain: {
+    alignSelf: "flex-start",
   },
   title: {
     fontSize: 17,
