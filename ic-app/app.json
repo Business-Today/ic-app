@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "BT IC",
+    "name": "Business Today IC",
     "slug": "ic-app",
     "version": "1.0.7",
     "orientation": "portrait",
@@ -12,9 +12,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "org.businesstoday.ic",
       "infoPlist": {
-        "NSCameraUsageDescription": "BT Conference uses your camera to scan QR codes for conference check-in and to take a profile photo for your attendee profile.",
+        "NSCameraUsageDescription": "Business Today IC uses your camera to scan QR codes for conference check-in and to take a profile photo for your attendee profile.",
         "ITSAppUsesNonExemptEncryption": false,
-        "NFCReaderUsageDescription": "BT Conference reads the badges you tap to check people in and add them to your network."
+        "NFCReaderUsageDescription": "Business Today IC reads the badges you tap to check people in and add them to your network."
       }
     },
     "android": {
@@ -52,7 +52,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "BT Conference uses your camera to scan QR codes for conference check-in and to take a profile photo for your attendee profile."
+          "cameraPermission": "Business Today IC uses your camera to scan QR codes for conference check-in and to take a profile photo for your attendee profile."
         }
       ],
       "expo-font",
@@ -71,7 +71,7 @@
       [
         "react-native-nfc-manager",
         {
-          "nfcPermission": "BT Conference reads the badges you tap to check people in and add them to your network.",
+          "nfcPermission": "Business Today IC reads the badges you tap to check people in and add them to your network.",
           "includeNdefEntitlement": false
         }
       ]
