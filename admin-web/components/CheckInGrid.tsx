@@ -1,9 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import InfoNote from "@/components/InfoNote";
+import SessionRoster from "@/components/SessionRoster";
+import { parseSpeakerIds } from "@/components/SpeakerPicker";
 import {
   GRACE_MINUTES,
+  assignedSlot,
   attendeeName,
   describeStatus,
   etDay,
@@ -17,14 +21,33 @@ import {
   type Status,
 } from "@/lib/attendance";
 import { setCheckIn } from "@/lib/checkin";
+import { supabase } from "@/lib/supabase";
 import type { AttendanceData } from "@/lib/useAttendance";
 
-const LEGEND: { status: Status; label: string }[] = [
-  { status: "present", label: "Checked in" },
-  { status: "absent", label: `Not checked in after ${GRACE_MINUTES} min` },
-  { status: "pending", label: `Not yet (first ${GRACE_MINUTES} min)` },
-  { status: "untracked", label: "Session not being tracked" },
-  { status: "none", label: "Not on their schedule" },
+// Seminar blocks in conference order; each holds <slot>_1, <slot>_2, …
+const BLOCKS = ["offsite", "exec1", "exec2", "exec3", "exec4"] as const;
+
+/** "Executive Seminar 2" → "Exec Sem 2"; the block's name is its most common seminar title. */
+function blockName(titles: (string | null)[], fallback: string) {
+  const counts = new Map<string, number>();
+  for (const t of titles) {
+    if (t && /^Executive Seminar/i.test(t)) counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  return top ? top.replace(/^Executive Seminar/i, "Exec Sem") : fallback;
+}
+
+// Short labels keep the legend to the right of the pickers; hover for the full meaning.
+const LEGEND: { status: Status; label: string; detail: string }[] = [
+  { status: "present", label: "Checked in", detail: "Checked in (late check-ins count too)" },
+  {
+    status: "absent",
+    label: `Missed (${GRACE_MINUTES}+ min)`,
+    detail: `Not checked in ${GRACE_MINUTES} minutes after the session started`,
+  },
+  { status: "pending", label: "Not yet", detail: `Not checked in yet; still within the first ${GRACE_MINUTES} minutes` },
+  { status: "untracked", label: "Not tracked", detail: "Nobody was checked in to this session, so it doesn't count" },
+  { status: "none", label: "Not scheduled", detail: "Not on this attendee's schedule" },
 ];
 
 export function Square({ status, label }: { status: Status; label: string }) {
@@ -42,7 +65,14 @@ export function UpdatedLine({ data }: { data: AttendanceData }) {
 }
 
 /** Every attendee × every session of one day, green/red by check-in. */
-export default function CheckInGrid({ data }: { data: AttendanceData }) {
+export default function CheckInGrid({
+  data,
+  readOnly = false,
+}: {
+  data: AttendanceData;
+  /** Viewers see the grid but can't check anyone in or out. */
+  readOnly?: boolean;
+}) {
   const { sessions, attendees, now } = data;
   const days = useMemo(
     () => [...new Set(sessions.map((s) => s.day).filter((d): d is string => !!d))].sort(),
@@ -54,6 +84,79 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [view, setView] = useState<"day" | "seminar">("day");
+  const [chosenBlock, setChosenBlock] = useState<string | null>(null);
+  const [chosenSession, setChosenSession] = useState<string | null>(null);
+  const [speakerNames, setSpeakerNames] = useState<
+    Map<string, { full: string; last: string }>
+  >(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    void supabase
+      .from("speakerProfile")
+      .select("id, firstName, lastName")
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setSpeakerNames(
+          new Map(
+            data.map((s) => {
+              const full = [s.firstName, s.lastName].filter(Boolean).join(" ") || String(s.id);
+              return [String(s.id), { full, last: s.lastName || full }];
+            })
+          )
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const speakersFor = (value: string | null | undefined, short = false) =>
+    parseSpeakerIds(value)
+      .map((id) => {
+        const name = speakerNames.get(id);
+        return name ? (short ? name.last : name.full) : id;
+      })
+      .join(", ") || null;
+
+  const blocks = useMemo(
+    () =>
+      BLOCKS.map((slot, index) => {
+        const items = sessions
+          .filter((s) => assignedSlot(s.optionID)?.slot === slot)
+          .sort((a, b) => assignedSlot(a.optionID)!.number - assignedSlot(b.optionID)!.number);
+        const first = items[0];
+        return {
+          slot,
+          name: blockName(
+            items.map((s) => s.title),
+            index === 0 ? "Offsite" : `Exec ${index}`
+          ),
+          // "Sat 10:15 AM": the weekday is enough to tell the blocks apart.
+          when: first?.startTime
+            ? `${etDay(first.startTime).split(",")[0]} ${etTime(first.startTime)}`
+            : "",
+          ends: first?.endTime ? new Date(first.endTime).getTime() : null,
+          items,
+        };
+      }).filter((b) => b.items.length > 0),
+    [sessions]
+  );
+  // Until one is picked, show the block that's on now or next.
+  const block =
+    blocks.find((b) => b.slot === chosenBlock) ??
+    blocks.find((b) => b.ends !== null && b.ends > now) ??
+    blocks[0] ??
+    null;
+  const selected =
+    view !== "seminar" || !block
+      ? null
+      : block.items.find((s) => s.optionID === chosenSession) ?? block.items[0];
+  const selectedInfo = useMemo(
+    () => (selected ? sessionInfo(selected, attendees, now) : null),
+    [selected, attendees, now]
+  );
 
   async function change(optionID: string, title: string, email: string, name: string, checkIn: boolean) {
     const question = checkIn
@@ -165,33 +268,83 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
           />
           Only people missing a check-in
         </label>
-        <span className="count">
-          {rows.length} of {attendees.length}
-        </span>
+        {!selected && (
+          <span className="count">
+            {rows.length} of {attendees.length}
+          </span>
+        )}
         <div className="spacer" />
         <UpdatedLine data={data} />
         <button className="btn" disabled={data.loading} onClick={data.refresh}>
           Refresh
         </button>
+        <InfoNote
+          text={
+            readOnly
+              ? "View only. Ask an editor to fix a check-in."
+              : "Click a square to check someone in or remove a check-in. Changes save right away and are logged in the attendance history."
+          }
+        />
       </div>
 
       <div className="att-bar">
-        <div className="subtabs" role="tablist" aria-label="Day">
-          {days.map((d) => (
+        <div className="att-pickers">
+          <div className="segmented" role="group" aria-label="View">
             <button
-              key={d}
-              role="tab"
-              aria-selected={d === day}
-              className={d === day ? "chip active" : "chip"}
-              onClick={() => setChosenDay(d)}
+              type="button"
+              aria-pressed={view === "day"}
+              className={view === "day" ? "active" : undefined}
+              onClick={() => setView("day")}
             >
-              {dayLabel(d)}
+              By day
             </button>
-          ))}
+            <button
+              type="button"
+              aria-pressed={view === "seminar"}
+              className={view === "seminar" ? "active" : undefined}
+              onClick={() => setView("seminar")}
+            >
+              By seminar
+            </button>
+          </div>
+          {view === "day" ? (
+            <div className="subtabs" role="tablist" aria-label="Day">
+              {days.map((d) => (
+                <button
+                  key={d}
+                  role="tab"
+                  aria-selected={d === day}
+                  className={d === day ? "chip active" : "chip"}
+                  onClick={() => setChosenDay(d)}
+                >
+                  {dayLabel(d)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="subtabs" role="tablist" aria-label="Seminar block">
+              {blocks.map((b) => (
+                <button
+                  key={b.slot}
+                  role="tab"
+                  aria-selected={b.slot === block?.slot}
+                  className={b.slot === block?.slot ? "chip stacked active" : "chip stacked"}
+                  title={b.when}
+                  onClick={() => {
+                    setChosenBlock(b.slot);
+                    setChosenSession(null);
+                  }}
+                >
+                  {b.name}
+                  <span className="chip-sub">{b.when}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <ul className="legend">
-          {LEGEND.map(({ status, label }) => (
-            <li key={status}>
+          {LEGEND.map(({ status, label, detail }) => (
+            <li key={status} title={detail}>
               <span className={`sq ${status}`} aria-hidden="true" />
               {label}
             </li>
@@ -208,11 +361,64 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
           </button>
         </p>
       )}
-      <p className="description">
-        Click a square to check someone in or remove a check-in. Changes save right away and are
-        logged in the attendance history.
-      </p>
 
+      {view === "seminar" && block && (
+        <div className="seminar-picker" role="tablist" aria-label="Seminar">
+          {block.items.map((s) => {
+            const info = sessionInfo(s, attendees, now);
+            const present = info.expected.filter((a) =>
+              info.checkedIn.has(normalizeEmail(a.email))
+            ).length;
+            const number = assignedSlot(s.optionID)!.number;
+            const kind =
+              s.type === "workshop" ? "Workshop" : s.title === "Offsite Seminars" ? "Offsite" : null;
+            const isActive = s.optionID === selected?.optionID;
+            return (
+              <button
+                key={s.optionID}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={isActive ? "seminar-pill active" : "seminar-pill"}
+                title={[s.optionID, speakersFor(s.idSpeaker), s.location].filter(Boolean).join(" · ")}
+                onClick={() => setChosenSession(s.optionID)}
+              >
+                <span className="seminar-pill-top">
+                  <strong>#{number}</strong>
+                  {kind && <span className="seminar-kind">{kind}</span>}
+                </span>
+                <span className="seminar-pill-name">{speakersFor(s.idSpeaker, true) ?? "No speaker set"}</span>
+                <span className="seminar-pill-count">
+                  {info.expected.length ? `${present}/${info.expected.length} in` : "none assigned"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {selectedInfo ? (
+        <SessionRoster
+          info={selectedInfo}
+          attendees={attendees}
+          speakers={speakersFor(selectedInfo.session.idSpeaker)}
+          search={search}
+          onlyMissing={onlyMissing}
+          readOnly={readOnly}
+          busy={busy}
+          onToggle={toggle}
+          onRemove={(email, name) =>
+            void change(
+              selectedInfo.session.optionID,
+              selectedInfo.session.title ?? selectedInfo.session.optionID,
+              email,
+              name,
+              false
+            )
+          }
+        />
+      ) : (
+      <>
       <div className="table-wrap">
         <table className="att-grid">
           <thead>
@@ -252,7 +458,7 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
                   const cellBusy = busy === `${info.session.optionID}|${attendee.email}`;
                   return (
                     <td key={info.session.optionID} className="att-cell">
-                      {status === "none" ? (
+                      {status === "none" || readOnly ? (
                         <Square status={status} label={label} />
                       ) : (
                         <button
@@ -302,7 +508,7 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
                     {attendee ? "not on their schedule" : "not an attendee"}
                   </span>
                 </span>
-                <button
+                {!readOnly && <button
                   className="btn small danger"
                   disabled={busy !== null}
                   onClick={() =>
@@ -316,11 +522,13 @@ export default function CheckInGrid({ data }: { data: AttendanceData }) {
                   }
                 >
                   Remove
-                </button>
+                </button>}
               </li>
             ))}
           </ul>
         </div>
+      )}
+      </>
       )}
     </section>
   );

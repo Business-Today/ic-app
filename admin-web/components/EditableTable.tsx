@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import InfoNote from "@/components/InfoNote";
 import {
   SpeakerDialog,
   describeSpeakers,
@@ -378,10 +379,19 @@ function NewSpeakerField({
 export default function EditableTable({
   config,
   onDirtyChange,
+  readOnly = false,
+  actions,
+  reloadKey = 0,
 }: {
   config: TableConfig;
   /** Reports how many rows have unsaved changes. */
   onDirtyChange?: (table: string, rows: number) => void;
+  /** Viewers: no editing, adding or deleting (the database refuses it too). */
+  readOnly?: boolean;
+  /** Extra toolbar buttons, shown before Reload. */
+  actions?: React.ReactNode;
+  /** Bump to re-fetch rows after a change made outside the table. */
+  reloadKey?: number;
 }) {
   const { table, key, columns } = config;
   const selectList = columns.map((c) => c.name).join(",");
@@ -463,6 +473,11 @@ export default function EditableTable({
     setToasts([]);
     void load();
   }, [load]);
+
+  // Re-fetch in place (rather than remounting) so toolbar actions keep their state.
+  useEffect(() => {
+    if (reloadKey > 0) void load();
+  }, [reloadKey, load]);
 
   const visibleRows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -556,6 +571,37 @@ export default function EditableTable({
     for (const row of targets) {
       const changes = changesFor(row);
       if (Object.keys(changes).length === 0) continue;
+
+      // Someone else may have saved this row since it was loaded. Compare the
+      // columns being changed; on a mismatch, keep the draft, show their
+      // value, and let a second Save overwrite it on purpose.
+      const { data: latestData, error: readError } = await supabase
+        .from(table)
+        .select(Object.keys(changes).join(","))
+        .eq(key, row[key] as string)
+        .maybeSingle();
+      if (!readError && !latestData) {
+        failures.push(`${String(row[key])}: someone else deleted this row. Reload to see the current list.`);
+        continue;
+      }
+      if (!readError) {
+        const latest = latestData as unknown as Row;
+        const conflicts = columns.filter(
+          (c) => c.name in changes && !sameValue(c, latest[c.name], row[c.name])
+        );
+        if (conflicts.length > 0) {
+          setRows((current) =>
+            current.map((r) => (r[key] === row[key] ? { ...r, ...latest } : r))
+          );
+          const theirs = conflicts
+            .map((c) => `${c.label} is now “${displayValue(c, latest[c.name]) ?? "empty"}”`)
+            .join(", ");
+          failures.push(
+            `${String(row[key])}: someone else changed this since you loaded it (${theirs}). Your edit is still here; Save again to replace theirs, or Undo to keep it.`
+          );
+          continue;
+        }
+      }
 
       // .select() makes an RLS-blocked update visible (it returns 0 rows).
       const { data, error } = await supabase
@@ -657,19 +703,17 @@ export default function EditableTable({
           </span>
         )}
         <div className="spacer" />
-        {config.allowInsert && !newRow && (
+        {config.allowInsert && !readOnly && !newRow && (
           <button className="btn" disabled={busy} onClick={() => setNewRow({})}>
             + Add row
           </button>
         )}
+        {actions}
         <button className="btn" disabled={busy || loading} onClick={reload}>
           Reload
         </button>
+        {config.description && <InfoNote text={config.description} />}
       </div>
-
-      {config.description && (
-        <p className="description">{config.description}</p>
-      )}
 
       <div className="table-wrap">
         <table>
@@ -678,14 +722,17 @@ export default function EditableTable({
               {columns.map((column) => (
                 <th
                   key={column.name}
-                  style={{ minWidth: column.width }}
+                  className={column.name === key ? "key-col" : undefined}
+                  // A width (not just a minimum) on every column spreads spare
+                  // room evenly; otherwise the longest text, like emails, takes it all.
+                  style={{ minWidth: column.width, width: column.width }}
                   title={column.hint}
                 >
                   {column.label}
                   {column.hint && <span className="hint-dot">?</span>}
                 </th>
               ))}
-              <th className="actions-col" />
+              {!readOnly && <th className="actions-col" />}
             </tr>
           </thead>
           <tbody>
@@ -781,7 +828,7 @@ export default function EditableTable({
                           : row[column.name]
                       }
                       original={row[column.name]}
-                      editable={column.editable !== false && column.name !== key}
+                      editable={!readOnly && column.editable !== false && column.name !== key}
                       isKey={column.name === key}
                       disabled={busy}
                       speakers={speakers}
@@ -793,7 +840,7 @@ export default function EditableTable({
                       onChange={(value) => setDraft(row, column, value)}
                     />
                   ))}
-                  <td className="actions">
+                  {!readOnly && <td className="actions">
                     {dirty && (
                       <>
                         <button
@@ -821,14 +868,14 @@ export default function EditableTable({
                         Delete
                       </button>
                     )}
-                  </td>
+                  </td>}
                 </tr>
               );
             })}
 
             {!loading && visibleRows.length === 0 && (
               <tr>
-                <td className="empty" colSpan={columns.length + 1}>
+                <td className="empty" colSpan={columns.length + (readOnly ? 0 : 1)}>
                   {search.trim()
                     ? `Nothing matches “${search.trim()}”.`
                     : "No rows yet."}

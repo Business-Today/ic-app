@@ -24,6 +24,8 @@ export type AttendanceSession = {
   startTime: string | null;
   endTime: string | null;
   emails: string | null;
+  location?: string | null;
+  idSpeaker?: string | null;
 };
 
 export type AttendanceAttendee = {
@@ -32,7 +34,8 @@ export type AttendanceAttendee = {
   lastName: string | null;
 } & Record<AssignmentColumn, number | null>;
 
-export const SESSION_SELECT = "optionID, title, day, type, startTime, endTime, emails";
+export const SESSION_SELECT =
+  "optionID, title, day, type, startTime, endTime, emails, location, idSpeaker";
 export const ATTENDEE_SELECT = `email, firstName, lastName, ${ASSIGNMENT_COLUMNS.join(", ")}`;
 
 /**
@@ -57,12 +60,18 @@ export function attendeeName(a: AttendanceAttendee) {
   return [a.firstName, a.lastName].filter(Boolean).join(" ") || a.email;
 }
 
+/** "exec1_3" → { slot: "exec1", number: 3 }; null for sessions everyone has. */
+export function assignedSlot(optionID: string) {
+  const match = /^(exec[1-4]|offsite)_(\d+)$/.exec(optionID);
+  return match ? { slot: match[1] as AssignmentColumn, number: Number(match[2]) } : null;
+}
+
 export function isOnSchedule(attendee: AttendanceAttendee, session: AttendanceSession) {
   if (session.type === "all") return true;
-  const match = /^(exec[1-4]|offsite)_(\d+)$/.exec(session.optionID);
-  if (!match) return false;
-  const value = attendee[match[1] as AssignmentColumn];
-  return value !== null && value !== undefined && Number(value) === Number(match[2]);
+  const assigned = assignedSlot(session.optionID);
+  if (!assigned) return false;
+  const value = attendee[assigned.slot];
+  return value !== null && value !== undefined && Number(value) === assigned.number;
 }
 
 /** The moment a missing check-in turns red. */

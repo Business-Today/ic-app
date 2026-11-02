@@ -129,17 +129,11 @@ export const SPEAKER_TABLES: { label: string; config: TableConfig }[] = [
   },
   {
     label: "speakerProfileAll",
-    config: speakerTable(
-      "speakerProfileAll",
-      "Not currently read by the app."
-    ),
+    config: speakerTable("speakerProfileAll", "Not currently read by the app."),
   },
   {
     label: "speakerProfileSem",
-    config: speakerTable(
-      "speakerProfileSem",
-      "Not currently read by the app."
-    ),
+    config: speakerTable("speakerProfileSem", "Not currently read by the app."),
   },
 ];
 
