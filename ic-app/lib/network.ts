@@ -14,6 +14,7 @@ export type DirectoryAttendee = Attendee & {
   school: string | null;
   major: string | null;
   interests: string | null;
+  bio: string | null;
   linkedin: string | null;
   instagram: string | null;
   profilePictureUrl: string | null;
@@ -26,6 +27,30 @@ export function profileImageUrl(path: string | null | undefined) {
     .publicUrl;
 }
 
+export type SocialNetwork = "LinkedIn" | "Instagram";
+
+const SOCIAL_URL_PATTERNS: Record<SocialNetwork, RegExp> = {
+  LinkedIn: /linkedin\.com\/in\/([^/?#\s]+)/i,
+  Instagram: /instagram\.com\/([^/?#\s]+)/i,
+};
+
+/**
+ * Profiles store just the username. Accepts a bare handle, "@handle" or a
+ * pasted profile URL and returns the username part.
+ */
+export function socialUsername(raw: string, network: SocialNetwork) {
+  const trimmed = raw.trim();
+  const fromUrl = trimmed.match(SOCIAL_URL_PATTERNS[network])?.[1];
+
+  return (fromUrl ?? trimmed).replace(/^@+/, "").replace(/[\s/]+/g, "");
+}
+
+export function socialUrl(username: string, network: SocialNetwork) {
+  return network === "LinkedIn"
+    ? `https://www.linkedin.com/in/${username}/`
+    : `https://www.instagram.com/${username}/`;
+}
+
 export async function openProfileLink(rawUrl: string, label: string) {
   const trimmed = rawUrl.trim();
   if (!trimmed) {
@@ -33,10 +58,9 @@ export async function openProfileLink(rawUrl: string, label: string) {
     return;
   }
 
-  // The profile field is free text, so Instagram can be a bare handle.
   const url =
-    label === "Instagram" && !/instagram\.com/i.test(trimmed)
-      ? `https://www.instagram.com/${trimmed.replace(/^@/, "")}`
+    label === "LinkedIn" || label === "Instagram"
+      ? socialUrl(socialUsername(trimmed, label), label)
       : trimmed;
 
   let normalizedUrl: string;
@@ -110,7 +134,7 @@ export async function fetchDirectory(): Promise<{
   const { data, error } = await supabase
     .from("attendeeProfile")
     .select(
-      "firstName, lastName, email, school, major, interests, linkedin, instagram, profilePictureUrl"
+      "firstName, lastName, email, school, major, interests, bio, linkedin, instagram, profilePictureUrl"
     )
     .order("lastName", { ascending: true })
     .order("firstName", { ascending: true });

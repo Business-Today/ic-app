@@ -196,7 +196,7 @@ export default function Network() {
         const { data: profiles, error: profileError } = await supabase
           .from("attendeeProfile")
           .select(
-            "email, firstName, lastName, school, major, interests, linkedin, instagram, profilePictureUrl"
+            "email, firstName, lastName, school, major, interests, bio, linkedin, instagram, profilePictureUrl"
           )
           .in("email", emails)
           .order("lastName", { ascending: true })
@@ -508,7 +508,6 @@ export default function Network() {
   const isDirectory = activeTab === "directory";
   const rows = isDirectory ? directoryRows : networkProfiles;
 
-  // LinkedIn and Instagram are only shared with connections.
   function openProfile(person: DirectoryAttendee) {
     const email = normalizeEmail(person.email);
 
@@ -521,14 +520,10 @@ export default function Network() {
         school: person.school ?? "",
         major: person.major ?? "",
         interests: person.interests ?? "",
+        bio: person.bio ?? "",
         profilePictureUrl: person.profilePictureUrl ?? "",
-        ...(networkEmails.has(email)
-          ? {
-              connected: "true",
-              linkedin: person.linkedin ?? "",
-              instagram: person.instagram ?? "",
-            }
-          : {}),
+        linkedin: person.linkedin ?? "",
+        instagram: person.instagram ?? "",
       },
     });
   }
