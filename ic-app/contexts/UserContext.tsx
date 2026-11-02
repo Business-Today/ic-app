@@ -11,6 +11,7 @@ type User = {
   school: string; 
   major: string; 
   interests: string;
+  bio: string | null;
   profilePictureUrl: string;
   groupNumber?: number | null;
 };

@@ -1,10 +1,11 @@
 import { useLocalSearchParams } from "expo-router";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import Avatar from "@/components/Avatar";
 import ListRow, { ListGroup } from "@/components/ListRow";
 import { fullName } from "@/lib/attendance";
-import { openProfileLink, profileImageUrl } from "@/lib/network";
+import SocialLinks from "@/components/SocialLinks";
+import { profileImageUrl } from "@/lib/network";
 import theme from "@/theme";
 
 export default function DirectoryProfile() {
@@ -15,8 +16,8 @@ export default function DirectoryProfile() {
     school?: string;
     major?: string;
     interests?: string;
+    bio?: string;
     profilePictureUrl?: string;
-    connected?: string;
     linkedin?: string;
     instagram?: string;
   }>();
@@ -26,14 +27,7 @@ export default function DirectoryProfile() {
     .filter(Boolean)
     .join(" · ");
   const interests = params.interests?.trim();
-  // Only connections see these, and the Directory passes nothing for others.
-  const links =
-    params.connected === "true"
-      ? [
-          { label: "LinkedIn", value: params.linkedin?.trim() },
-          { label: "Instagram", value: params.instagram?.trim() },
-        ]
-      : [];
+  const bio = params.bio?.trim();
 
   return (
     <>
@@ -52,27 +46,28 @@ export default function DirectoryProfile() {
           />
           <Text style={styles.name}>{name}</Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          <SocialLinks linkedin={params.linkedin} instagram={params.instagram} />
         </View>
 
         <ListGroup>
           <ListRow
+            title="Email"
+            subtitle={params.email}
+            subtitleLines={1}
+            divider
+            onPress={() => void Linking.openURL(`mailto:${params.email}`)}
+          />
+          <ListRow
+            title="Bio"
+            subtitle={bio || "Not added"}
+            subtitleLines={0}
+            divider
+          />
+          <ListRow
             title="Interests"
             subtitle={interests || "Not added"}
             subtitleLines={0}
-            divider={links.length > 0}
           />
-          {links.map(({ label, value }, index) => (
-            <ListRow
-              key={label}
-              title={label}
-              subtitle={value || "Not added"}
-              subtitleLines={1}
-              divider={index < links.length - 1}
-              onPress={
-                value ? () => void openProfileLink(value, label) : undefined
-              }
-            />
-          ))}
         </ListGroup>
       </ScrollView>
 

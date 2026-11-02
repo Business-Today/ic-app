@@ -180,7 +180,7 @@ export default function Home() {
       const { data: attendee, error: profileError } = await supabase
         .from("attendeeProfile")
         .select(
-          "email, firstName, lastName, linkedin, instagram, school, major, interests, profilePictureUrl, groupNumber"
+          "email, firstName, lastName, linkedin, instagram, school, major, interests, bio, profilePictureUrl, groupNumber"
         )
         .eq("email", normalizedEmail)
         .maybeSingle();

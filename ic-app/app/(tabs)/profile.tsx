@@ -1,11 +1,12 @@
+import SocialLinks from "@/components/SocialLinks";
 import SymbolIcon from "@/components/SymbolIcon";
+import { socialUsername } from "@/lib/network";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   Alert,
   Image,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +19,21 @@ import { useUser } from "../../contexts/UserContext";
 import { supabase } from "../../lib/supabase";
 import theme from "../../theme";
 
+const BIO_WORD_LIMIT = 150;
+
+function countWords(text: string) {
+  return text.match(/\S+/g)?.length ?? 0;
+}
+
+// Cuts at the end of the last allowed word, so a long paste keeps its start.
+function limitWords(text: string, limit: number) {
+  const words = [...text.matchAll(/\S+/g)];
+  if (words.length <= limit) return text;
+
+  const last = words[limit - 1];
+  return text.slice(0, last.index + last[0].length);
+}
+
 export default function Profile() {
   const [mode, setMode] = useState<"edit" | "view">("view");
   const { user, setUser } = useUser();
@@ -28,6 +44,7 @@ export default function Profile() {
   const [school, setSchool] = useState(user?.school ?? "");
   const [major, setMajor] = useState(user?.major ?? "");
   const [interests, setInterests] = useState(user?.interests ?? "");
+  const [bio, setBio] = useState(user?.bio ?? "");
   const [linkedin, setLinkedin] = useState(user?.linkedin ?? "");
   const [instagram, setInstagram] = useState(user?.instagram ?? "");
 
@@ -115,18 +132,20 @@ export default function Profile() {
         return;
       }
 
-      const { error: updateError } = await supabase
+      // An update that matches no row isn't an error, so ask for the row back.
+      const { data: updated, error: updateError } = await supabase
         .from("attendeeProfile")
         .update({
           profilePictureUrl: filePath,
         })
-        .eq("email", user.email);
+        .eq("email", user.email)
+        .select("email");
 
-      if (updateError) {
+      if (updateError || !updated?.length) {
         console.error("Profile-image database update error:", updateError);
         Alert.alert(
           "Photo uploaded, but profile could not be updated.",
-          updateError.message
+          updateError?.message ?? "Your profile wasn't found. Please try again."
         );
         return;
       }
@@ -180,8 +199,10 @@ export default function Profile() {
 
     setIsSaving(true);
 
+    const trimmedBio = bio.trim();
+
     try {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("attendeeProfile")
         .update({
           firstName,
@@ -189,14 +210,19 @@ export default function Profile() {
           school,
           major,
           interests,
+          bio: trimmedBio,
           linkedin,
           instagram,
         })
-        .eq("email", user.email);
+        .eq("email", user.email)
+        .select("email");
 
-      if (error) {
+      if (error || !updated?.length) {
         console.error("Profile save error:", error);
-        Alert.alert("Could not save profile", error.message);
+        Alert.alert(
+          "Could not save profile",
+          error?.message ?? "Your profile wasn't found. Please try again."
+        );
         return;
       }
 
@@ -207,10 +233,12 @@ export default function Profile() {
         school,
         major,
         interests,
+        bio: trimmedBio,
         linkedin,
         instagram,
       });
 
+      setBio(trimmedBio);
       setMode("view");
       Alert.alert("Profile saved");
     } catch (error) {
@@ -219,22 +247,6 @@ export default function Profile() {
     } finally {
       setIsSaving(false);
     }
-  }
-
-  async function openProfileLink(url: string, label: string) {
-    const normalizedUrl =
-      url.startsWith("https://") || url.startsWith("http://")
-        ? url
-        : `https://${url}`;
-
-    const supported = await Linking.canOpenURL(normalizedUrl);
-
-    if (!supported) {
-      Alert.alert("Invalid link", `This ${label} URL cannot be opened.`);
-      return;
-    }
-
-    await Linking.openURL(normalizedUrl);
   }
 
  async function handleLogout() {
@@ -264,6 +276,7 @@ export default function Profile() {
     setSchool(user?.school ?? "");
     setMajor(user?.major ?? "");
     setInterests(user?.interests ?? "");
+    setBio(user?.bio ?? "");
     setLinkedin(user?.linkedin ?? "");
     setInstagram(user?.instagram ?? "");
     setMode("view");
@@ -282,38 +295,30 @@ export default function Profile() {
 
   const rows: Row[] = [
     {
+      key: "bio",
+      label: "Bio",
+      value: bio,
+      placeholder: "Add a short bio",
+      onPress: () => setMode("edit"),
+    },
+    {
       key: "interests",
       label: "Interests",
       value: interests,
       placeholder: "Add your interests",
       onPress: () => setMode("edit"),
     },
-    {
-      key: "linkedin",
-      label: "LinkedIn",
-      value: linkedin,
-      placeholder: "Add your LinkedIn",
-      onPress: () => {
-        if (linkedin) {
-          void openProfileLink(linkedin, "LinkedIn");
-        } else {
-          setMode("edit");
-        }
-      },
-    },
-    {
-      key: "instagram",
-      label: "Instagram",
-      value: instagram,
-      placeholder: "Add your Instagram",
-      onPress: () => {
-        if (instagram) {
-          void openProfileLink(instagram, "Instagram");
-        } else {
-          setMode("edit");
-        }
-      },
-    },
+    ...(!linkedin && !instagram
+      ? [
+          {
+            key: "socials",
+            label: "LinkedIn & Instagram",
+            value: "",
+            placeholder: "Add your usernames",
+            onPress: () => setMode("edit"),
+          },
+        ]
+      : []),
   ];
 
   function renderView() {
@@ -335,7 +340,7 @@ export default function Profile() {
                 <Text style={styles.rowLabel}>{row.label}</Text>
                 <Text
                   style={[styles.rowValue, !row.value && styles.rowPlaceholder]}
-                  numberOfLines={2}
+                  numberOfLines={row.key === "bio" ? 0 : 2}
                 >
                   {row.value || row.placeholder}
                 </Text>
@@ -369,6 +374,9 @@ export default function Profile() {
     label: string;
     value: string;
     onChange: (value: string) => void;
+    /** Fixed text shown before the input, e.g. the start of a profile URL. */
+    prefix?: string;
+    footer?: string;
     props?: React.ComponentProps<typeof TextInput>;
   }[] = [
     {
@@ -407,27 +415,40 @@ export default function Profile() {
       props: { autoCapitalize: "sentences", multiline: true },
     },
     {
+      key: "bio",
+      label: "Bio",
+      value: bio,
+      onChange: (value) => setBio(limitWords(value, BIO_WORD_LIMIT)),
+      footer: `${countWords(bio)}/${BIO_WORD_LIMIT} words`,
+      props: {
+        autoCapitalize: "sentences",
+        multiline: true,
+        placeholder: "A few sentences about yourself",
+      },
+    },
+    // Pasting a full profile URL works too; it's reduced to the username.
+    {
       key: "linkedin",
-      label: "LinkedIn",
+      label: "LinkedIn username",
       value: linkedin,
-      onChange: setLinkedin,
+      onChange: (value) => setLinkedin(socialUsername(value, "LinkedIn")),
+      prefix: "linkedin.com/in/",
       props: {
         autoCapitalize: "none",
         autoCorrect: false,
-        keyboardType: "url",
-        placeholder: "linkedin.com/in/you",
+        placeholder: "username",
       },
     },
     {
       key: "instagram",
-      label: "Instagram",
+      label: "Instagram username",
       value: instagram,
-      onChange: setInstagram,
+      onChange: (value) => setInstagram(socialUsername(value, "Instagram")),
+      prefix: "@",
       props: {
         autoCapitalize: "none",
         autoCorrect: false,
-        keyboardType: "url",
-        placeholder: "instagram.com/you",
+        placeholder: "username",
       },
     },
   ];
@@ -445,16 +466,24 @@ export default function Profile() {
               ]}
             >
               <Text style={styles.fieldLabel}>{field.label}</Text>
-              <TextInput
-                value={field.value}
-                onChangeText={field.onChange}
-                placeholderTextColor={theme.colors.labelTertiary}
-                style={[
-                  styles.fieldInput,
-                  field.props?.multiline && styles.fieldInputMultiline,
-                ]}
-                {...field.props}
-              />
+              <View style={styles.fieldInputRow}>
+                {field.prefix ? (
+                  <Text style={styles.fieldPrefix}>{field.prefix}</Text>
+                ) : null}
+                <TextInput
+                  value={field.value}
+                  onChangeText={field.onChange}
+                  placeholderTextColor={theme.colors.labelTertiary}
+                  style={[
+                    styles.fieldInput,
+                    field.props?.multiline && styles.fieldInputMultiline,
+                  ]}
+                  {...field.props}
+                />
+              </View>
+              {field.footer ? (
+                <Text style={styles.fieldFooter}>{field.footer}</Text>
+              ) : null}
             </View>
           ))}
         </View>
@@ -532,6 +561,10 @@ export default function Profile() {
                 : subtitle || "Add your school and major"}
             </Text>
           </Pressable>
+
+          {mode === "view" ? (
+            <SocialLinks linkedin={linkedin} instagram={instagram} />
+          ) : null}
         </View>
 
         {mode === "edit" ? renderEdit() : renderView()}
@@ -642,7 +675,22 @@ const styles = StyleSheet.create({
     color: theme.colors.labelSecondary,
     marginBottom: 4,
   },
+  fieldInputRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  fieldPrefix: {
+    fontSize: 17,
+    color: theme.colors.labelTertiary,
+  },
+  fieldFooter: {
+    fontSize: 13,
+    color: theme.colors.labelTertiary,
+    marginTop: 6,
+    textAlign: "right",
+  },
   fieldInput: {
+    flex: 1,
     fontSize: 17,
     color: theme.colors.textPrimary,
     padding: 0,
