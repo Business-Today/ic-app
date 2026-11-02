@@ -12,7 +12,7 @@ import { ATTENDEE_SCHEDULES, SCHEDULE, SPEAKER_TABLES } from "@/lib/tables";
 import { useAttendance } from "@/lib/useAttendance";
 
 type Tab = "schedule" | "speakers" | "attendees" | "checkins" | "absences";
-type Access = "checking" | "editor" | "denied";
+type Access = "checking" | "editor" | "viewer" | "denied";
 
 const TABS: { value: Tab; label: string; blurb: string }[] = [
   {
@@ -100,8 +100,10 @@ export default function Home() {
   // Bumped after a spreadsheet import so the attendee table reloads.
   const [attendeeTableKey, setAttendeeTableKey] = useState(0);
   // Only fetched (and refreshed every minute) while one of its tabs is open.
+  const signedIn = access === "editor" || access === "viewer";
+  const readOnly = access === "viewer";
   const attendance = useAttendance(
-    access === "editor" && (tab === "checkins" || tab === "absences")
+    signedIn && (tab === "checkins" || tab === "absences")
   );
 
   const markDirty = useCallback((table: string, rows: number) => {
@@ -145,10 +147,22 @@ export default function Home() {
       setAccess("denied");
       return;
     }
-    void supabase.rpc("is_editor").then(({ data, error }) => {
+    void (async () => {
+      const role = await supabase.rpc("portal_role");
       if (cancelled) return;
-      setAccess(!error && data === true ? "editor" : "denied");
-    });
+      if (!role.error) {
+        setAccess(role.data === "editor" || role.data === "viewer" ? role.data : "denied");
+        return;
+      }
+      // portal_role() not applied yet (PGRST202): editors only, as before.
+      if (role.error.code === "PGRST202") {
+        const editor = await supabase.rpc("is_editor");
+        if (cancelled) return;
+        setAccess(!editor.error && editor.data === true ? "editor" : "denied");
+        return;
+      }
+      setAccess("denied");
+    })();
     return () => {
       cancelled = true;
     };
@@ -202,7 +216,7 @@ export default function Home() {
     );
   }
 
-  if (access !== "editor") {
+  if (!signedIn) {
     return (
       <Gate>
         {access === "checking" ? (
@@ -212,7 +226,7 @@ export default function Home() {
             <h2>Not approved yet</h2>
             <p>
               {isAllowedDomain(email)
-                ? `${email} isn't on the editor list. Ask an organizer to add you.`
+                ? `${email} isn't on the editor or viewer list. Ask an organizer to add you.`
                 : `${email} isn't a @${ALLOWED_DOMAIN} account. Sign in with your Princeton Google account.`}
             </p>
           </>
@@ -248,6 +262,11 @@ export default function Home() {
               <h1 className="brand-product">IC Editor</h1>
             </div>
             <div className="who">
+              {readOnly && (
+                <span className="role-badge" title="You can look but not change anything">
+                  View only
+                </span>
+              )}
               <span className="who-email">{email}</span>
               <button className="btn ghost" onClick={() => void signOut()}>
                 Sign out
@@ -280,7 +299,7 @@ export default function Home() {
         <p className="page-blurb">{current.blurb}</p>
 
         <div hidden={tab !== "schedule"}>
-          <EditableTable config={SCHEDULE} onDirtyChange={markDirty} />
+          <EditableTable config={SCHEDULE} onDirtyChange={markDirty} readOnly={readOnly} />
         </div>
 
         <div hidden={tab !== "speakers"}>
@@ -303,26 +322,33 @@ export default function Home() {
           </div>
           {SPEAKER_TABLES.map((entry, index) => (
             <div key={entry.config.table} hidden={speakerIndex !== index}>
-              <EditableTable config={entry.config} onDirtyChange={markDirty} />
+              <EditableTable
+                config={entry.config}
+                onDirtyChange={markDirty}
+                readOnly={readOnly}
+              />
             </div>
           ))}
         </div>
 
         <div hidden={tab !== "attendees"}>
-          <div className="tab-actions">
-            <BulkSchedulePaste
-              hasUnsavedEdits={(dirty[ATTENDEE_SCHEDULES.table] ?? 0) > 0}
-              onSaved={() => setAttendeeTableKey((k) => k + 1)}
-            />
-          </div>
           <EditableTable
-            key={attendeeTableKey}
             config={ATTENDEE_SCHEDULES}
             onDirtyChange={markDirty}
+            readOnly={readOnly}
+            reloadKey={attendeeTableKey}
+            actions={
+              !readOnly && (
+                <BulkSchedulePaste
+                  hasUnsavedEdits={(dirty[ATTENDEE_SCHEDULES.table] ?? 0) > 0}
+                  onSaved={() => setAttendeeTableKey((k) => k + 1)}
+                />
+              )
+            }
           />
         </div>
 
-        {tab === "checkins" && <CheckInGrid data={attendance} />}
+        {tab === "checkins" && <CheckInGrid data={attendance} readOnly={readOnly} />}
         {tab === "absences" && <AbsenceList data={attendance} />}
       </main>
     </>
