@@ -4,11 +4,13 @@ import { Platform } from "react-native";
 import SymbolIcon from "@/components/SymbolIcon";
 import { useUser } from "@/contexts/UserContext";
 import theme from "@/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const ICON_SIZE = 30;
 
 export default function TabLayout() {
   const { user } = useUser();
+  const insets = useSafeAreaInsets();
   const canTakeAttendance = !!user?.email?.endsWith("@princeton.edu");
 
   return (
@@ -23,10 +25,14 @@ export default function TabLayout() {
           borderTopWidth: 0,
           elevation: 0,
           shadowOpacity: 0,
+
           // Pull the icons toward the center of the bar.
           paddingHorizontal: canTakeAttendance ? 40 : 64,
-          height: Platform.OS === "ios" ? 84 : 64,
+
+          // Preserve the existing iOS height; include Android's safe area.
+          height: Platform.OS === "ios" ? 84 : 64 + insets.bottom,
           paddingTop: 10,
+          paddingBottom: insets.bottom,
         },
         tabBarItemStyle: {
           paddingVertical: 0,

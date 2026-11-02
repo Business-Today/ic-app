@@ -15,29 +15,66 @@ export type DirectoryAttendee = Attendee & {
   major: string | null;
   linkedin: string | null;
   instagram: string | null;
+  interests: string | null;
 };
 
 export async function openProfileLink(rawUrl: string, label: string) {
   const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    Alert.alert("Invalid link", `This ${label} link cannot be opened.`);
+    return;
+  }
+
   // The profile field is free text, so Instagram can be a bare handle.
   const url =
     label === "Instagram" && !/instagram\.com/i.test(trimmed)
       ? `https://www.instagram.com/${trimmed.replace(/^@/, "")}`
       : trimmed;
 
-  const normalizedUrl =
-    url.startsWith("https://") || url.startsWith("http://")
-      ? url
-      : `https://${url}`;
+  let normalizedUrl: string;
+  try {
+    const parsedUrl = new URL(
+      url.startsWith("https://") || url.startsWith("http://")
+        ? url
+        : `https://${url}`
+    );
 
-  const canOpen = await Linking.canOpenURL(normalizedUrl);
+    if (
+      !["http:", "https:"].includes(parsedUrl.protocol) ||
+      !/^[a-z0-9.-]+$/i.test(parsedUrl.hostname)
+    ) {
+      throw new Error("Profile link hostname is not a valid ASCII hostname.");
+    }
+
+    // Pass the parsed URL so Unicode hostnames are converted to their ASCII
+    // representation before Android's intent resolver sees them.
+    normalizedUrl = parsedUrl.toString();
+  } catch (error) {
+    console.error(`Could not parse ${label} link:`, error);
+    Alert.alert("Invalid link", `This ${label} link cannot be opened.`);
+    return;
+  }
+
+  let canOpen: boolean;
+  try {
+    canOpen = await Linking.canOpenURL(normalizedUrl);
+  } catch (error) {
+    console.error(`Could not check ${label} link:`, error);
+    Alert.alert("Invalid link", `This ${label} link cannot be opened.`);
+    return;
+  }
 
   if (!canOpen) {
     Alert.alert("Invalid link", `This ${label} link cannot be opened.`);
     return;
   }
 
-  await Linking.openURL(normalizedUrl);
+  try {
+    await Linking.openURL(normalizedUrl);
+  } catch (error) {
+    console.error(`Could not open ${label} link:`, error);
+    Alert.alert("Invalid link", `This ${label} link cannot be opened.`);
+  }
 }
 
 export async function fetchNetworkEmails(
