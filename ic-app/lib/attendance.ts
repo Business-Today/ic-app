@@ -37,6 +37,7 @@ export type Attendee = {
   firstName: string;
   lastName: string;
   email: string;
+  school: string | null;
 };
 
 // --- Strings ---------------------------------------------------------------
@@ -285,7 +286,7 @@ export async function fetchAttendeesByEmail(
 
   const { data, error } = await supabase
     .from("attendeeProfile")
-    .select("firstName, lastName, email")
+    .select("firstName, lastName, email, school")
     .in("email", emails);
 
   if (error) {
@@ -324,7 +325,7 @@ export async function fetchSessionRoster(
 
   let expectedQuery = supabase
     .from("attendeeProfile")
-    .select("firstName, lastName, email")
+    .select("firstName, lastName, email, school")
     .not("email", "ilike", "%@princeton.edu")
     .order("lastName", { ascending: true })
     .order("firstName", { ascending: true });
@@ -355,7 +356,13 @@ export async function fetchSessionRoster(
     checkedIn: [...emails]
       .reverse()
       .map(
-        (email) => byEmail.get(email) ?? { firstName: "", lastName: "", email }
+        (email) =>
+          byEmail.get(email) ?? {
+            firstName: "",
+            lastName: "",
+            email,
+            school: null,
+          }
       ),
     notCheckedIn: ((expected ?? []) as Attendee[]).filter(
       (attendee) => !checkedInEmails.has(normalizeEmail(attendee.email))
@@ -371,7 +378,7 @@ export async function searchAttendees(query: string): Promise<Attendee[]> {
 
   const { data, error } = await supabase
     .from("attendeeProfile")
-    .select("firstName, lastName, email")
+    .select("firstName, lastName, email, school")
     .or(
       `firstName.ilike.*${term}*,lastName.ilike.*${term}*,email.ilike.*${term}*`
     )
@@ -459,7 +466,7 @@ export async function checkInAttendee(
 
   const { data: attendee, error: attendeeError } = await supabase
     .from("attendeeProfile")
-    .select("firstName, lastName, email")
+    .select("firstName, lastName, email, school")
     .eq("email", email)
     .maybeSingle();
 

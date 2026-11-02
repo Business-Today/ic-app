@@ -295,8 +295,7 @@ export default function Login() {
               <Text style={styles.title}>Email</Text>
 
               <Text style={styles.description}>
-                Please enter the email you used for your Business Today
-                application.
+                Please enter the school email you submitted to your RSVP form.
               </Text>
             </View>
 

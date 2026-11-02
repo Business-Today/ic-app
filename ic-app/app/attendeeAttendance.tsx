@@ -67,7 +67,7 @@ export default function AttendeeLookup() {
                 <Avatar firstName={item.firstName} lastName={item.lastName} />
               }
               title={name || item.email}
-              subtitle={name ? item.email : undefined}
+              subtitle={name ? item.school ?? undefined : undefined}
               onPress={() =>
                 router.push({
                   pathname: "/attendeeDetail",

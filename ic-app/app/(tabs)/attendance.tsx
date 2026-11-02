@@ -15,8 +15,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import DayTabs from "@/components/DayTabs";
 import ListRow, { ListGroup } from "@/components/ListRow";
-import OutcomeIcon from "@/components/OutcomeIcon";
 import NfcTapView from "@/components/NfcTapView";
+import OutcomeIcon from "@/components/OutcomeIcon";
 import ScannerLayer, { type ScanMode } from "@/components/ScannerLayer";
 import SectionLabel from "@/components/SectionLabel";
 import SymbolIcon from "@/components/SymbolIcon";
@@ -413,6 +413,7 @@ export default function Attendance() {
             fallback: "radio-outline",
           })}
           action={linkTagAction}
+          bottomClearance={64}
           onStart={() => void nfc.start()}
           onStop={nfc.stop}
           onOpenSettings={() => void openNfcSettings()}

@@ -28,7 +28,7 @@ export async function findAttendeeByTag(
 ): Promise<{ attendee: TaggedAttendee | null; error: string | null }> {
   const { data, error } = await supabase
     .from("attendeeProfile")
-    .select("email, firstName, lastName, nfcTagId")
+    .select("email, firstName, lastName, school, nfcTagId")
     .eq("nfcTagId", tagId)
     .maybeSingle<TaggedAttendee>();
 
@@ -50,7 +50,7 @@ export async function searchAttendeesWithTags(
 
   const { data, error } = await supabase
     .from("attendeeProfile")
-    .select("email, firstName, lastName, nfcTagId")
+    .select("email, firstName, lastName, school, nfcTagId")
     .or(
       `firstName.ilike.*${term}*,lastName.ilike.*${term}*,email.ilike.*${term}*`
     )
@@ -72,7 +72,7 @@ export async function fetchAttendeeWithTag(
 ): Promise<TaggedAttendee | null> {
   const { data, error } = await supabase
     .from("attendeeProfile")
-    .select("email, firstName, lastName, nfcTagId")
+    .select("email, firstName, lastName, school, nfcTagId")
     .eq("email", email.trim().toLowerCase())
     .not("email", "ilike", "%@princeton.edu")
     .maybeSingle<TaggedAttendee>();

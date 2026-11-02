@@ -448,7 +448,7 @@ export default function AssignNfcTag() {
                 {fullName(selected) || selected.email}
               </Text>
               <Text style={styles.selectedEmail} numberOfLines={1}>
-                {selected.email}
+                {selected.school ?? ""}
               </Text>
             </View>
           </View>
@@ -604,7 +604,7 @@ export default function AssignNfcTag() {
                 <Avatar firstName={item.firstName} lastName={item.lastName} />
               }
               title={name || item.email}
-              subtitle={name ? item.email : undefined}
+              subtitle={name ? item.school ?? undefined : undefined}
               trailing={
                 <View style={styles.rowTrailing}>
                   {item.nfcTagId ? (

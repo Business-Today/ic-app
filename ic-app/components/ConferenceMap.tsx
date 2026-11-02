@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import concourse from "@/assets/maps/concourse.svg";
@@ -41,15 +41,31 @@ const FLOOR_TABS = MAPS.map(({ key, label }) => ({ key, label }));
 type ConferenceMapProps = {
   /** Room to open on, zoomed in and highlighted. */
   focusRoom?: MapRoom | null;
+  /** Floor 4 is only available to Princeton students. */
+  showFourthFloor?: boolean;
 };
 
-export default function ConferenceMap({ focusRoom }: ConferenceMapProps) {
+export default function ConferenceMap({
+  focusRoom,
+  showFourthFloor = true,
+}: ConferenceMapProps) {
+  const visibleMaps = showFourthFloor
+    ? MAPS
+    : MAPS.filter((map) => map.key !== "fourth");
   const [selectedKey, setSelectedKey] = useState<FloorKey>(
-    focusRoom?.floor ?? "concourse"
+    focusRoom?.floor === "fourth" && !showFourthFloor
+      ? "concourse"
+      : (focusRoom?.floor ?? "concourse")
   );
 
+  useEffect(() => {
+    if (!showFourthFloor && selectedKey === "fourth") {
+      setSelectedKey("concourse");
+    }
+  }, [selectedKey, showFourthFloor]);
+
   const selectedMap =
-    MAPS.find((map) => map.key === selectedKey) ?? MAPS[0];
+    visibleMaps.find((map) => map.key === selectedKey) ?? visibleMaps[0];
   const MapComponent = selectedMap.Component;
   const { x, y, width, height } = selectedMap.viewBox;
 
@@ -70,7 +86,11 @@ export default function ConferenceMap({ focusRoom }: ConferenceMapProps) {
       </ZoomableMap>
 
       <SegmentedTabs
-        tabs={FLOOR_TABS}
+        tabs={
+          showFourthFloor
+            ? FLOOR_TABS
+            : FLOOR_TABS.filter((tab) => tab.key !== "fourth")
+        }
         value={selectedKey}
         onChange={setSelectedKey}
         centered

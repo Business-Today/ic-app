@@ -51,6 +51,7 @@ type Props = {
   pillButtons?: boolean;
   /** Extra button, left out while the iOS NFC sheet is blocking touches. */
   action?: ReactNode;
+  bottomClearance?: number;
   onStart: () => void;
   onStop: () => void;
   onOpenSettings?: () => void;
@@ -108,6 +109,7 @@ export default function NfcTapView({
   compactRingSize = COMPACT_RING_SIZE,
   pillButtons = false,
   action,
+  bottomClearance = 32,
   onStart,
   onStop,
   onOpenSettings,
@@ -229,11 +231,15 @@ export default function NfcTapView({
         </Animated.View>
       ) : (
         <Animated.View
-          key="full"
-          entering={TAB_IN}
-          exiting={TAB_OUT}
-          style={[styles.root, styles.rootFull]}
-        >
+            key="full"
+            entering={TAB_IN}
+            exiting={TAB_OUT}
+            style={[
+              styles.root,
+              styles.rootFull,
+              { bottom: bottomClearance },
+            ]}
+          >
           <View style={styles.rings}>
             {beacon}
             <Text
@@ -321,7 +327,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   rootFull: {
-    bottom: 12,
+    bottom: 64,
   },
   // Centred in the gap above the iOS NFC sheet. Changing this share of the tab
   // moves the whole compact view up or down.

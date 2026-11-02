@@ -112,6 +112,7 @@ export async function fetchDirectory(): Promise<{
     .select(
       "firstName, lastName, email, school, major, interests, linkedin, instagram, profilePictureUrl"
     )
+    .not("email", "ilike", "%@princeton.edu")
     .order("lastName", { ascending: true })
     .order("firstName", { ascending: true });
 

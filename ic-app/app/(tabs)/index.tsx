@@ -141,6 +141,8 @@ export default function Home() {
   const [contactsError, setContactsError] = useState<string | null>(null);
 
   const parsedGroupNumber = Number(user?.groupNumber);
+  const isPrincetonStudent =
+    user?.email.trim().toLowerCase().endsWith("@princeton.edu") ?? false;
 
   const groupNumber =
     Number.isInteger(parsedGroupNumber) &&
@@ -252,7 +254,7 @@ export default function Home() {
         `exec4_${attendeeSchedule.exec4}`,
         `offsite_${attendeeSchedule.offsite}`,
         ...allOptions
-          .filter((item) => item.type === "all")
+          .filter((item) => item.type === "all" || item.type === "group")
           .map((item) => item.optionID),
       ];
 
@@ -553,16 +555,19 @@ export default function Home() {
         ) : (
           eventsForDay.map((event) => {
             const highlighted = event.optionID === highlightedEventId;
-            const expanded = event.optionID === expandedEventId;
             const start = splitTime(event.startTime);
             const end = splitTime(event.endTime);
             const hasSpeakers = Boolean(event.speakers?.length);
             const mapRoom = findMapRoom(event.location);
             const notScheduled = Boolean(event.notScheduled);
+            const isGroupEvent = event.type === "group";
+            const hasDetails = Boolean(hasSpeakers || mapRoom || isGroupEvent);
+            const expanded = hasDetails && event.optionID === expandedEventId;
 
             return (
               <Pressable
                 key={event.optionID}
+                disabled={!hasDetails}
                 onPress={() =>
                   setExpandedEventId(expanded ? null : event.optionID)
                 }
@@ -627,21 +632,44 @@ export default function Home() {
                     </Text>
                   </View>
 
-                  <SymbolIcon
-                    name={expanded ? "chevron.down" : "chevron.right"}
-                    fallback={expanded ? "chevron-down" : "chevron-forward"}
-                    size={16}
-                    weight="semibold"
-                    color={
-                      highlighted
-                        ? "rgba(255,255,255,0.8)"
-                        : theme.colors.labelTertiary
-                    }
-                  />
+                  {hasDetails ? (
+                    <SymbolIcon
+                      name={expanded ? "chevron.down" : "chevron.right"}
+                      fallback={expanded ? "chevron-down" : "chevron-forward"}
+                      size={16}
+                      weight="semibold"
+                      color={
+                        highlighted
+                          ? "rgba(255,255,255,0.8)"
+                          : theme.colors.labelTertiary
+                      }
+                    />
+                  ) : null}
                 </View>
 
-                {expanded && (hasSpeakers || mapRoom) ? (
+                {expanded ? (
                   <View style={styles.sessionSpeakers}>
+                    {isGroupEvent ? (
+                      <View style={styles.groupRow}>
+                        <Text
+                          style={[
+                            styles.groupLabel,
+                            highlighted && styles.textOnBlueMuted,
+                          ]}
+                        >
+                          Group
+                        </Text>
+                        <Text
+                          style={[
+                            styles.groupValue,
+                            highlighted && styles.textOnBlue,
+                          ]}
+                        >
+                          {groupNumber ?? ""}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     {event.speakers?.map((speaker) => {
                       const hasBio = Boolean(speaker.bio?.trim());
 
@@ -743,7 +771,10 @@ export default function Home() {
     return (
       <>
         <Text style={styles.sectionTitle}>Conference Map</Text>
-        <ConferenceMap focusRoom={focusedRoom} />
+        <ConferenceMap
+          focusRoom={focusedRoom}
+          showFourthFloor={isPrincetonStudent}
+        />
       </>
     );
   }
@@ -965,6 +996,22 @@ const styles = StyleSheet.create({
   sessionSpeakers: {
     marginTop: 8,
     marginLeft: 95,
+  },
+  groupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+  },
+  groupLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: -0.2,
+    color: theme.colors.textPrimary,
+  },
+  groupValue: {
+    fontSize: 15,
+    color: theme.colors.labelSecondary,
   },
   speakerRow: {
     flexDirection: "row",

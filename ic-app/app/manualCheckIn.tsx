@@ -162,7 +162,7 @@ export default function ManualCheckIn() {
                 <Avatar firstName={item.firstName} lastName={item.lastName} />
               }
               title={name || item.email}
-              subtitle={name ? item.email : undefined}
+              subtitle={name ? item.school ?? undefined : undefined}
               trailing={
                 done ? (
                   <View style={styles.doneState}>
