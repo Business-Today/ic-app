@@ -32,6 +32,7 @@ type ScheduleItem = {
   type: string;
   idSpeaker: string;
   speakers?: Speaker[];
+  notScheduled?: boolean;
 };
 
 type Speaker = {
@@ -47,12 +48,17 @@ type Speaker = {
 
 type AttendeeSchedule = {
   groupNumber: number;
-  offsite: number;
-  exec1: number;
-  exec2: number;
-  exec3: number;
-  exec4: number;
+  offsite: number | null;
+  exec1: number | null;
+  exec2: number | null;
+  exec3: number | null;
+  exec4: number | null;
 };
+
+type ScheduleOption = Pick<
+  ScheduleItem,
+  "optionID" | "title" | "startTime" | "endTime" | "day" | "type"
+>;
 
 type HomeTab = "schedule" | "map" | "emergency";
 
@@ -63,6 +69,34 @@ const HOME_TABS: { key: HomeTab; label: string }[] = [
 ];
 
 const DAY_KEYS = ["day1", "day2", "day3"] as const;
+
+// Time blocks attendees are assigned into: `exec1_2` is for whoever has exec1 = 2.
+const ASSIGNED_BLOCKS = ["exec1", "exec2", "exec3", "exec4", "offsite"] as const;
+
+// Stands in for a block the attendee has no session in. Blocks can mix session
+// types, so it borrows the title and time of the most common option.
+function notScheduledPlaceholder(
+  block: (typeof ASSIGNED_BLOCKS)[number],
+  options: ScheduleOption[]
+): ScheduleItem {
+  const titleCounts = new Map<string, number>();
+
+  options.forEach((option) => {
+    titleCounts.set(option.title, (titleCounts.get(option.title) ?? 0) + 1);
+  });
+
+  const mostCommon = options.reduce((best, option) =>
+    titleCounts.get(option.title)! > titleCounts.get(best.title)! ? option : best
+  );
+
+  return {
+    ...mostCommon,
+    optionID: `${block}_not_scheduled`,
+    location: "",
+    idSpeaker: "",
+    notScheduled: true,
+  };
+}
 
 function isSameDate(a: Date, b: Date) {
   return (
@@ -195,19 +229,18 @@ export default function Home() {
         return;
       }
 
-      const { data: allScheduleRows, error: allScheduleError } = await supabase
+      const { data: optionRows, error: optionsError } = await supabase
         .from("scheduleOptions")
-        .select("optionID")
-        .eq("type", "all");
+        .select("optionID, title, startTime, endTime, day, type")
+        .order("optionID", { ascending: true });
 
-      if (allScheduleError) {
-        console.error(
-          "Could not load all-event schedule option IDs:",
-          allScheduleError
-        );
+      if (optionsError) {
+        console.error("Could not load schedule options:", optionsError);
 
         return;
       }
+
+      const allOptions = (optionRows ?? []) as ScheduleOption[];
 
       const scheduleIds = [
         `exec1_${attendeeSchedule.exec1}`,
@@ -215,7 +248,9 @@ export default function Home() {
         `exec3_${attendeeSchedule.exec3}`,
         `exec4_${attendeeSchedule.exec4}`,
         `offsite_${attendeeSchedule.offsite}`,
-        ...(allScheduleRows ?? []).map((item) => item.optionID),
+        ...allOptions
+          .filter((item) => item.type === "all")
+          .map((item) => item.optionID),
       ];
 
       const uniqueScheduleIds = [...new Set(scheduleIds)];
@@ -233,6 +268,18 @@ export default function Home() {
       }
 
       const rawSchedule = (scheduleData ?? []) as ScheduleItem[];
+
+      const placeholders = ASSIGNED_BLOCKS.flatMap((block) => {
+        const options = allOptions.filter((option) =>
+          option.optionID.startsWith(`${block}_`)
+        );
+        const assignedId = `${block}_${attendeeSchedule[block]}`;
+
+        return options.length === 0 ||
+          options.some((option) => option.optionID === assignedId)
+          ? []
+          : [notScheduledPlaceholder(block, options)];
+      });
 
       const speakerIds = [
         ...new Set(
@@ -265,7 +312,7 @@ export default function Home() {
         return;
       }
 
-      setSchedule(rawSchedule);
+      setSchedule([...rawSchedule, ...placeholders]);
       setSpeakersAll(speakers);
     }
 
@@ -342,7 +389,11 @@ export default function Home() {
       const start = new Date(event.startTime);
       const end = new Date(event.endTime);
 
-      return isSameDate(start, now) && end.getTime() > now.getTime();
+      return (
+        !event.notScheduled &&
+        isSameDate(start, now) &&
+        end.getTime() > now.getTime()
+      );
     });
 
     return current?.optionID ?? null;
@@ -482,6 +533,7 @@ export default function Home() {
             const start = splitTime(event.startTime);
             const end = splitTime(event.endTime);
             const hasSpeakers = Boolean(event.speakers?.length);
+            const notScheduled = Boolean(event.notScheduled);
 
             return (
               <Pressable
@@ -502,6 +554,7 @@ export default function Home() {
                       style={[
                         styles.timeText,
                         highlighted && styles.textOnBlue,
+                        notScheduled && styles.textNotScheduled,
                       ]}
                     >
                       {start.time}
@@ -531,6 +584,7 @@ export default function Home() {
                       style={[
                         styles.sessionTitle,
                         highlighted && styles.textOnBlue,
+                        notScheduled && styles.textNotScheduled,
                       ]}
                       numberOfLines={expanded || !hasSpeakers ? undefined : 1}
                     >
@@ -543,7 +597,9 @@ export default function Home() {
                       ]}
                       numberOfLines={expanded || !hasSpeakers ? undefined : 1}
                     >
-                      {event.location || "Location TBD"}
+                      {notScheduled
+                        ? "You are not scheduled for this time"
+                        : event.location || "Location TBD"}
                     </Text>
                   </View>
 
@@ -883,6 +939,9 @@ const styles = StyleSheet.create({
   },
   textOnBlueMuted: {
     color: "rgba(255,255,255,0.8)",
+  },
+  textNotScheduled: {
+    color: theme.colors.labelSecondary,
   },
   contactList: {
     gap: 12,
