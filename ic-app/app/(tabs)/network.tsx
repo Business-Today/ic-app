@@ -1,20 +1,39 @@
 import { useCameraPermissions } from "expo-camera";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Alert,
   FlatList,
-  Image,
+  Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  View
+  View,
+  type LayoutChangeEvent,
 } from "react-native";
+import Animated, {
+  Easing,
+  Extrapolation,
+  FadeIn,
+  FadeInRight,
+  FadeOut,
+  FadeOutRight,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Avatar from "@/components/Avatar";
-import Button from "@/components/Button";
 import ListRow from "@/components/ListRow";
 import NfcTapView, { type TapCopy } from "@/components/NfcTapView";
 import OutcomeIcon from "@/components/OutcomeIcon";
@@ -32,7 +51,7 @@ import {
   addToNetwork,
   fetchDirectory,
   fetchNetworkEmails,
-  openProfileLink,
+  profileImageUrl,
   type DirectoryAttendee,
 } from "@/lib/network";
 import { openNfcSettings } from "@/lib/nfc";
@@ -56,17 +75,28 @@ const BADGE_TAP_COPY: TapCopy = {
 
 const BADGE_RING_SIZE = 180;
 
-type NetworkProfile = {
-  email: string;
-  firstName: string;
-  lastName: string;
-  school: string;
-  major: string;
-  interests: string;
-  linkedin: string;
-  instagram: string;
-  profilePictureUrl: string | null;
+const SEARCH_TIMING = {
+  duration: 280,
+  easing: Easing.bezier(0.2, 0, 0, 1),
 };
+const ROW_FADE_TIMING = { duration: 220, easing: Easing.out(Easing.quad) };
+
+// The search field's height, and the title and tabs' until they're measured.
+const SEARCH_HEADER_HEIGHT = 44;
+const TITLE_HEADER_HEIGHT = 94;
+
+/** Rows share one opacity, so a new list fades in as a whole. */
+function FadingRow({
+  opacity,
+  children,
+}: {
+  opacity: SharedValue<number>;
+  children: ReactNode;
+}) {
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
 
 type NetworkTab = "network" | "directory";
 
@@ -74,12 +104,6 @@ const NETWORK_TABS: { key: NetworkTab; label: string }[] = [
   { key: "network", label: "My Network" },
   { key: "directory", label: "Directory" },
 ];
-
-function getProfileImageUrl(profilePictureUrl: string | null) {
-  return supabase.storage
-    .from("profilePictures")
-    .getPublicUrl(profilePictureUrl ?? "anonymous.jpg").data.publicUrl;
-}
 
 /**
  * Connects two attendees both ways from a tapped badge. There is no prompt:
@@ -128,7 +152,9 @@ export default function Network() {
 
   // --- Connections list ---------------------------------------------------
   const [networkEmails, setNetworkEmails] = useState<Set<string>>(new Set());
-  const [networkProfiles, setNetworkProfiles] = useState<NetworkProfile[]>([]);
+  const [networkProfiles, setNetworkProfiles] = useState<DirectoryAttendee[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
 
   const userEmail = user?.email;
@@ -172,7 +198,9 @@ export default function Network() {
           .select(
             "email, firstName, lastName, school, major, interests, linkedin, instagram, profilePictureUrl"
           )
-          .in("email", emails);
+          .in("email", emails)
+          .order("lastName", { ascending: true })
+          .order("firstName", { ascending: true });
 
         if (!isActive) return;
 
@@ -182,7 +210,7 @@ export default function Network() {
           return;
         }
 
-        setNetworkProfiles((profiles ?? []) as NetworkProfile[]);
+        setNetworkProfiles((profiles ?? []) as DirectoryAttendee[]);
         setLoading(false);
       }
 
@@ -200,6 +228,63 @@ export default function Network() {
   const [directory, setDirectory] = useState<DirectoryAttendee[] | null>(null);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const listRef = useRef<FlatList<DirectoryAttendee>>(null);
+
+  // 0 = title and tabs, 1 = search field.
+  const searchProgress = useSharedValue(0);
+  const titleHeaderHeight = useSharedValue(TITLE_HEADER_HEIGHT);
+  const rowOpacity = useSharedValue(1);
+
+  function openSearch() {
+    setSearching(true);
+    searchProgress.value = withTiming(1, SEARCH_TIMING);
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }
+
+  function closeSearch() {
+    Keyboard.dismiss();
+    setQuery("");
+    setSearching(false);
+    searchProgress.value = withTiming(0, SEARCH_TIMING);
+  }
+
+  function fadeInRows() {
+    rowOpacity.value = 0;
+    rowOpacity.value = withTiming(1, ROW_FADE_TIMING);
+  }
+
+  function changeTab(tab: NetworkTab) {
+    if (tab === activeTab) return;
+
+    fadeInRows();
+    setActiveTab(tab);
+  }
+
+  function handleTitleHeaderLayout(event: LayoutChangeEvent) {
+    titleHeaderHeight.value = event.nativeEvent.layout.height;
+  }
+
+  const headerBodyStyle = useAnimatedStyle(() => ({
+    height: interpolate(
+      searchProgress.value,
+      [0, 1],
+      [titleHeaderHeight.value, SEARCH_HEADER_HEIGHT]
+    ),
+  }));
+
+  const titleHeaderStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      searchProgress.value,
+      [0, 0.6],
+      [1, 0],
+      Extrapolation.CLAMP
+    ),
+  }));
+
+  const scanPillStyle = useAnimatedStyle(() => ({
+    opacity: 1 - searchProgress.value,
+  }));
 
   // Fetched each time the tab opens, which also retries after a failure.
   useEffect(() => {
@@ -230,8 +315,15 @@ export default function Network() {
     );
   }, [directory, query, userEmail]);
 
-  // Only adds to this attendee's own list; the other person isn't there to
-  // agree, unlike a QR or NFC exchange.
+  // Fade rows in when the list they're waiting on finishes its first load.
+  const listLoaded = activeTab === "directory" ? directory !== null : !loading;
+
+  useEffect(() => {
+    if (!listLoaded) return;
+
+    rowOpacity.value = 0;
+    rowOpacity.value = withTiming(1, ROW_FADE_TIMING);
+  }, [listLoaded, rowOpacity]);
 
   // --- QR scanner ---------------------------------------------------------
   const [layerMode, setLayerMode] = useState<ScanMode>("scan");
@@ -413,81 +505,44 @@ export default function Network() {
       }
     : undefined;
 
-  function renderNetwork() {
+  const isDirectory = activeTab === "directory";
+  const rows = isDirectory ? directoryRows : networkProfiles;
+
+  // LinkedIn and Instagram are only shared with connections.
+  function openProfile(person: DirectoryAttendee) {
+    const email = normalizeEmail(person.email);
+
+    router.push({
+      pathname: "/directoryProfile",
+      params: {
+        email,
+        firstName: person.firstName ?? "",
+        lastName: person.lastName ?? "",
+        school: person.school ?? "",
+        major: person.major ?? "",
+        interests: person.interests ?? "",
+        profilePictureUrl: person.profilePictureUrl ?? "",
+        ...(networkEmails.has(email)
+          ? {
+              connected: "true",
+              linkedin: person.linkedin ?? "",
+              instagram: person.instagram ?? "",
+            }
+          : {}),
+      },
+    });
+  }
+
+  function renderNetworkEmpty() {
     if (loading && userEmail) {
       return <Text style={styles.emptyText}>Loading your network...</Text>;
     }
 
-    if (networkProfiles.length === 0) {
-      return (
-        <Text style={styles.emptyText}>
-          No connections yet. Tap a badge or scan a QR code to connect with someone.
-        </Text>
-      );
-    }
-
-    return networkProfiles.map((item) => (
-      <View key={item.email} style={styles.connectionCard}>
-        <View style={styles.profileHeader}>
-          <View style={styles.profileText}>
-            <Text style={styles.profileName}>
-              {item.firstName} {item.lastName}
-            </Text>
-            <Text style={styles.profileSchool}>
-              {item.school || "School not added"}
-            </Text>
-            <Text style={styles.profileMajor}>
-              {item.major || "Major not added"}
-            </Text>
-          </View>
-
-          <Image
-            source={{ uri: getProfileImageUrl(item.profilePictureUrl) }}
-            style={styles.profileImage}
-          />
-        </View>
-
-        <Text style={styles.profileInterests}>
-          Interests: {item.interests || "Not added yet"}
-        </Text>
-
-        <View style={styles.socialButtons}>
-          <View style={styles.socialButton}>
-            <Button
-              title={item.linkedin ? "LinkedIn" : "No LinkedIn"}
-              variant="secondary"
-              onPress={() => {
-                if (item.linkedin) {
-                  void openProfileLink(item.linkedin, "LinkedIn");
-                } else {
-                  Alert.alert(
-                    "LinkedIn unavailable",
-                    `${item.firstName} has not added a LinkedIn link.`
-                  );
-                }
-              }}
-            />
-          </View>
-
-          <View style={styles.socialButton}>
-            <Button
-              title={item.instagram ? "Instagram" : "No Instagram"}
-              variant="secondary"
-              onPress={() => {
-                if (item.instagram) {
-                  void openProfileLink(item.instagram, "Instagram");
-                } else {
-                  Alert.alert(
-                    "Instagram unavailable",
-                    `${item.firstName} has not added an Instagram link.`
-                  );
-                }
-              }}
-            />
-          </View>
-        </View>
-      </View>
-    ));
+    return (
+      <Text style={styles.emptyText}>
+        No connections yet. Tap a badge or scan a QR code to connect with someone.
+      </Text>
+    );
   }
 
   function renderDirectoryEmpty() {
@@ -547,97 +602,152 @@ export default function Network() {
       onModeChange={changeLayerMode}
     >
       <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-        <View style={styles.header}>
-          <View style={styles.titleRow}>
-            <Text style={styles.pageTitle}>Network</Text>
+        <FlatList
+          ref={listRef}
+          data={rows}
+          keyExtractor={(item) => item.email}
+          contentContainerStyle={styles.content}
+          ListHeaderComponent={
+            <View style={styles.header}>
+              <Animated.View style={[styles.headerBody, headerBodyStyle]}>
+                <Animated.View
+                  onLayout={handleTitleHeaderLayout}
+                  accessibilityElementsHidden={searching}
+                  style={[
+                    styles.headerLayer,
+                    titleHeaderStyle,
+                    searching && styles.inert,
+                  ]}
+                >
+                  <View style={styles.titleRow}>
+                    <Text style={styles.pageTitle}>Network</Text>
 
-            <Pressable
-              onPress={() => void openScanner()}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Scan, tap or show my code"
-              style={({ pressed }) => [
-                styles.scanButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <SymbolIcon
-                name="qrcode.viewfinder"
-                fallback="scan-outline"
-                size={22}
-                weight="semibold"
-                color={theme.colors.primaryBlue}
-              />
-            </Pressable>
-          </View>
+                    {isDirectory ? (
+                      <Animated.View
+                        entering={FadeIn.duration(180)}
+                        exiting={FadeOut.duration(120)}
+                      >
+                        <Pressable
+                          onPress={openSearch}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel="Search the directory"
+                          style={({ pressed }) => pressed && styles.pressed}
+                        >
+                          <SymbolIcon
+                            name="magnifyingglass"
+                            fallback="search"
+                            size={26}
+                            weight="medium"
+                            color={theme.colors.primaryBlue}
+                          />
+                        </Pressable>
+                      </Animated.View>
+                    ) : null}
+                  </View>
 
-          <SegmentedTabs
-            tabs={NETWORK_TABS}
-            value={activeTab}
-            onChange={setActiveTab}
-          />
-        </View>
-
-        {activeTab === "network" ? (
-          <ScrollView
-            contentContainerStyle={styles.content}
-            showsVerticalScrollIndicator={false}
-          >
-            {renderNetwork()}
-          </ScrollView>
-        ) : (
-          <>
-            <View style={styles.search}>
-              <SearchField
-                placeholder="Search by name"
-                value={query}
-                onChangeText={setQuery}
-              />
-            </View>
-
-            <FlatList
-              data={directoryRows}
-              keyExtractor={(item) => item.email}
-              contentContainerStyle={styles.directoryContent}
-              ListEmptyComponent={renderDirectoryEmpty()}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item, index }) => {
-                const name = fullName(item) || item.email;
-                const email = normalizeEmail(item.email);
-
-                return (
-                  <ListRow
-                    first={index === 0}
-                    last={index === directoryRows.length - 1}
-                    divider={index < directoryRows.length - 1}
-                    leading={
-                      <Avatar
-                        firstName={item.firstName}
-                        lastName={item.lastName}
-                      />
-                    }
-                    title={name}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/directoryProfile",
-                        params: {
-                          email,
-                          firstName: item.firstName ?? "",
-                          lastName: item.lastName ?? "",
-                          school: item.school ?? "",
-                          major: item.major ?? "",
-                          interests: item.interests ?? "",
-                        },
-                      })
-                    }
+                  <SegmentedTabs
+                    tabs={NETWORK_TABS}
+                    value={activeTab}
+                    onChange={changeTab}
                   />
-                );
-              }}
+                </Animated.View>
+
+                {searching ? (
+                  <Animated.View
+                    entering={FadeInRight.duration(280).easing(
+                      SEARCH_TIMING.easing
+                    )}
+                    exiting={FadeOutRight.duration(180)}
+                    style={[styles.headerLayer, styles.searchHeader]}
+                  >
+                    <View style={styles.searchField}>
+                      <SearchField
+                        pill
+                        placeholder="Search by name"
+                        value={query}
+                        onChangeText={setQuery}
+                        autoFocus
+                      />
+                    </View>
+
+                    <Pressable
+                      onPress={closeSearch}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close search"
+                      style={({ pressed }) => pressed && styles.pressed}
+                    >
+                      <SymbolIcon
+                        name="xmark"
+                        fallback="close"
+                        size={22}
+                        weight="medium"
+                        color={theme.colors.primaryBlue}
+                      />
+                    </Pressable>
+                  </Animated.View>
+                ) : null}
+              </Animated.View>
+            </View>
+          }
+          ListEmptyComponent={
+            <FadingRow opacity={rowOpacity}>
+              {isDirectory ? renderDirectoryEmpty() : renderNetworkEmpty()}
+            </FadingRow>
+          }
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <FadingRow opacity={rowOpacity}>
+              <ListRow
+                plain
+                leading={
+                  <Avatar
+                    firstName={item.firstName}
+                    lastName={item.lastName}
+                    imageUrl={profileImageUrl(item.profilePictureUrl)}
+                  />
+                }
+                title={fullName(item) || item.email}
+                subtitle={[item.school?.trim(), item.major?.trim()]
+                  .filter(Boolean)
+                  .join(" · ")}
+                subtitleLines={1}
+                onPress={() => openProfile(item)}
+              />
+            </FadingRow>
+          )}
+        />
+
+        <Animated.View
+          accessibilityElementsHidden={searching}
+          style={[
+            styles.scanPillPosition,
+            scanPillStyle,
+            searching && styles.inert,
+          ]}
+        >
+          <Pressable
+            onPress={() => void openScanner()}
+            accessibilityRole="button"
+            accessibilityLabel="Scan, tap or show my code"
+            style={({ pressed }) => [
+              styles.scanPill,
+              pressed && styles.pressed,
+            ]}
+          >
+            <SymbolIcon
+              name="qrcode.viewfinder"
+              fallback="scan-outline"
+              size={20}
+              weight="semibold"
+              color="#FFFFFF"
             />
-          </>
-        )}
+            <Text style={styles.scanPillText}>Scan</Text>
+          </Pressable>
+        </Animated.View>
       </SafeAreaView>
     </ScannerLayer>
   );
@@ -649,13 +759,29 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.backgroundWhite,
   },
   header: {
-    paddingHorizontal: 20,
     paddingTop: 40,
+    marginBottom: 16,
   },
+  // Edge to edge, so the clip doesn't cut off the tabs' horizontal scroll.
+  headerBody: {
+    marginHorizontal: -20,
+    overflow: "hidden",
+  },
+  headerLayer: {
+    position: "absolute",
+    top: 0,
+    left: 20,
+    right: 20,
+  },
+  inert: {
+    pointerEvents: "none",
+  },
+  // Tall enough for the search button, so the tabs don't shift when it appears.
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    minHeight: 36,
     marginBottom: 20,
   },
   pageTitle: {
@@ -664,18 +790,45 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     color: theme.colors.textPrimary,
   },
-  scanButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  searchHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.fillSecondary,
+    gap: 12,
   },
+  searchField: {
+    flex: 1,
+  },
+  // The bottom padding lets the last row scroll clear of the scan pill.
   content: {
     paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 40,
+    paddingBottom: 100,
+  },
+  // The screen's bottom edge sits right above the tab bar. This clears the
+  // 24pt fade the bar draws over the screen.
+  scanPillPosition: {
+    position: "absolute",
+    bottom: 28,
+    alignSelf: "center",
+  },
+  scanPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 999,
+    backgroundColor: theme.colors.primaryBlue,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  scanPillText: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "600",
+    letterSpacing: -0.3,
   },
   // Tap result, drawn over the camera
   tapFeedback: {
@@ -702,7 +855,6 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.7)",
     marginTop: 2,
   },
-  // Network view
   emptyText: {
     fontSize: 17,
     lineHeight: 24,
@@ -710,94 +862,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingTop: 32,
     paddingHorizontal: 24,
-  },
-  connectionCard: {
-    backgroundColor: theme.colors.fillSecondary,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 14,
-  },
-  profileHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  profileText: {
-    flex: 1,
-    paddingRight: 16,
-  },
-  profileName: {
-    fontSize: 22,
-    fontWeight: "700",
-    letterSpacing: -0.4,
-    color: theme.colors.textPrimary,
-    marginBottom: 6,
-  },
-  profileSchool: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: theme.colors.textPrimary,
-    marginBottom: 2,
-  },
-  profileMajor: {
-    fontSize: 15,
-    color: theme.colors.labelSecondary,
-  },
-  profileImage: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: theme.colors.fillTertiary,
-  },
-  profileInterests: {
-    fontSize: 15,
-    lineHeight: 21,
-    color: theme.colors.labelSecondary,
-    marginBottom: 16,
-  },
-  socialButtons: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  socialButton: {
-    flex: 1,
-  },
-  // Directory view
-  search: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 12,
-  },
-  directoryContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 40,
-  },
-  addPill: {
-    minWidth: 64,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: theme.colors.backgroundWhite,
-  },
-  addText: {
-    fontSize: 15,
-    fontWeight: "600",
-    letterSpacing: -0.2,
-    color: theme.colors.primaryBlue,
-  },
-  addedState: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  addedText: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: theme.colors.labelSecondary,
   },
   pressed: {
     opacity: 0.7,

@@ -4,14 +4,17 @@ import { StyleSheet, TextInput, View } from "react-native";
 import SymbolIcon from "@/components/SymbolIcon";
 import theme from "@/theme";
 
-type Props = Omit<ComponentProps<typeof TextInput>, "style">;
+type Props = Omit<ComponentProps<typeof TextInput>, "style"> & {
+  /** Fully round ends, matching the pills in SegmentedTabs. */
+  pill?: boolean;
+};
 
 /**
  * iOS-style search field: gray fill, leading magnifier, no border.
  */
-export default function SearchField(props: Props) {
+export default function SearchField({ pill, ...props }: Props) {
   return (
-    <View style={styles.field}>
+    <View style={[styles.field, pill && styles.fieldPill]}>
       <SymbolIcon
         name="magnifyingglass"
         fallback="search"
@@ -41,6 +44,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     backgroundColor: theme.colors.fillSecondary,
+  },
+  fieldPill: {
+    paddingHorizontal: 16,
+    borderRadius: 999,
   },
   input: {
     flex: 1,
