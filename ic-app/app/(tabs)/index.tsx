@@ -558,6 +558,7 @@ export default function Home() {
             const start = splitTime(event.startTime);
             const end = splitTime(event.endTime);
             const hasSpeakers = Boolean(event.speakers?.length);
+            const mapRoom = findMapRoom(event.location);
             const notScheduled = Boolean(event.notScheduled);
 
             return (
