@@ -1,112 +1,86 @@
 import { useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import concourse from "@/assets/maps/concourse.svg";
 import fourth from "@/assets/maps/fourth.svg";
 import third from "@/assets/maps/third.svg";
+import SegmentedTabs from "@/components/SegmentedTabs";
 import ZoomableMap from "@/components/ZoomableMap";
-import theme from "@/theme";
+import type { FloorKey, MapRect, MapRoom } from "@/constants/mapRooms";
 
-const MAPS = [
-  { id: "concourse", label: "Concourse", Component: concourse },
-  { id: "fourth", label: "Floor 4", Component: fourth },
-  { id: "third", label: "Floor 3", Component: third },
-] as const;
+// viewBox is set from here, overriding the svg's own, so a floor's drawing and
+// the room highlights placed on it can't disagree.
+const MAPS: {
+  key: FloorKey;
+  label: string;
+  Component: typeof concourse;
+  viewBox: MapRect;
+}[] = [
+  {
+    key: "concourse",
+    label: "Concourse",
+    Component: concourse,
+    viewBox: { x: 160, y: 150, width: 1400, height: 790 },
+  },
+  {
+    key: "third",
+    label: "Floor 3",
+    Component: third,
+    viewBox: { x: 35, y: 100, width: 1255, height: 550 },
+  },
+  {
+    key: "fourth",
+    label: "Floor 4",
+    Component: fourth,
+    viewBox: { x: 30, y: 125, width: 1430, height: 725 },
+  },
+];
 
-export default function ConferenceMap() {
-  const [selectedIndex, setSelectedIndex] = useState(0);
+const FLOOR_TABS = MAPS.map(({ key, label }) => ({ key, label }));
 
-  const selectedMap = MAPS[selectedIndex];
+type ConferenceMapProps = {
+  /** Room to open on, zoomed in and highlighted. */
+  focusRoom?: MapRoom | null;
+};
+
+export default function ConferenceMap({ focusRoom }: ConferenceMapProps) {
+  const [selectedKey, setSelectedKey] = useState<FloorKey>(
+    focusRoom?.floor ?? "concourse"
+  );
+
+  const selectedMap =
+    MAPS.find((map) => map.key === selectedKey) ?? MAPS[0];
   const MapComponent = selectedMap.Component;
+  const { x, y, width, height } = selectedMap.viewBox;
 
   return (
     <View style={styles.container}>
-      <View style={styles.selector}>
-        {MAPS.map((map, index) => {
-          const selected = index === selectedIndex;
-
-          return (
-            <Pressable
-              key={map.id}
-              onPress={() => setSelectedIndex(index)}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              style={({ pressed }) => [
-                styles.selectorButton,
-                selected && styles.selectorButtonSelected,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.selectorText,
-                  selected && styles.selectorTextSelected,
-                ]}
-              >
-                {map.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <ZoomableMap key={selectedMap.id}>
+      <ZoomableMap
+        key={selectedMap.key}
+        viewBox={selectedMap.viewBox}
+        focus={focusRoom?.floor === selectedKey ? focusRoom.rect : null}
+      >
         <MapComponent
           width="100%"
           height="100%"
+          viewBox={`${x} ${y} ${width} ${height}`}
           preserveAspectRatio="xMidYMid meet"
-          accessibilityLabel={selectedMap.label}
+          accessibilityLabel={`${selectedMap.label} map`}
         />
       </ZoomableMap>
+
+      <SegmentedTabs
+        tabs={FLOOR_TABS}
+        value={selectedKey}
+        onChange={setSelectedKey}
+        centered
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    gap: 12,
-  },
-  selector: {
-    flexDirection: "row",
-    backgroundColor: theme.colors.gray100,
-    borderRadius: 12,
-    padding: 4,
-    gap: 4,
-  },
-  selectorButton: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  selectorButtonSelected: {
-    backgroundColor: theme.colors.primaryBlue,
-  },
-  selectorText: {
-    ...theme.typography.body,
-    color: theme.colors.textSecondary,
-    textAlign: "center",
-  },
-  selectorTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  mapFrame: {
-    width: "100%",
-    height: 420,
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: theme.colors.gray100,
-  },
-  pressed: {
-    opacity: 0.7,
+    gap: 16,
   },
 });

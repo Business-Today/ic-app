@@ -73,6 +73,28 @@ export function initialsOf(person: {
   return initials || "?";
 }
 
+/**
+ * Where a speaker's headshot would be in the speakerPhotos bucket:
+ * firstname_lastname.png, lowercase, with spaces and punctuation as underscores
+ * and accents dropped. The file may not exist; Avatar falls back to initials.
+ */
+export function speakerPhotoUrl(person: {
+  firstName?: string | null;
+  lastName?: string | null;
+}) {
+  const fileName = fullName(person)
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  if (!fileName) return null;
+
+  return supabase.storage.from("speakerPhotos").getPublicUrl(`${fileName}.png`)
+    .data.publicUrl;
+}
+
 // --- Dates -----------------------------------------------------------------
 
 export function isSameDate(a: Date, b: Date) {
