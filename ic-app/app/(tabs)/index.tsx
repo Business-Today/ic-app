@@ -70,6 +70,13 @@ const HOME_TABS: { key: HomeTab; label: string }[] = [
 
 const DAY_KEYS = ["day1", "day2", "day3"] as const;
 
+// Day of the month in November -> schedule day shown by default.
+const CONFERENCE_DATE_TO_DAY: Record<number, (typeof DAY_KEYS)[number]> = {
+  6: "day1",
+  7: "day2",
+  8: "day3",
+};
+
 // Time blocks attendees are assigned into: `exec1_2` is for whoever has exec1 = 2.
 const ASSIGNED_BLOCKS = ["exec1", "exec2", "exec3", "exec4", "offsite"] as const;
 
@@ -357,17 +364,13 @@ export default function Home() {
     return labels;
   }, [schedule]);
 
-  // Day key whose events fall on today's date, if the conference is underway.
+  // Conference days are Nov 6 (Fri), Nov 7 (Sat), Nov 8 (Sun).
   const todayKey = useMemo(() => {
     const today = new Date();
+    if (today.getMonth() !== 10) return undefined;
 
-    return DAY_KEYS.find((dayKey) =>
-      schedule.some(
-        (event) =>
-          event.day === dayKey && isSameDate(new Date(event.startTime), today)
-      )
-    );
-  }, [schedule]);
+    return CONFERENCE_DATE_TO_DAY[today.getDate()];
+  }, []);
 
   // null means "no manual choice yet": default to today, else the first day.
   const [chosenDay, setChosenDay] = useState<string | null>(null);
