@@ -1,3 +1,14 @@
+import ConferenceMap from "@/components/ConferenceMap";
+import SegmentedTabs from "@/components/SegmentedTabs";
+import SymbolIcon from "@/components/SymbolIcon";
+import {
+  type EmergencyContact
+} from "@/constants/emergencyContacts";
+import { findMapRoom, type MapRoom } from "@/constants/mapRooms";
+import { useUser } from "@/contexts/UserContext";
+import { fullName } from "@/lib/attendance";
+import { supabase } from "@/lib/supabase";
+import theme from "@/theme";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -10,18 +21,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-import ConferenceMap from "@/components/ConferenceMap";
-import SegmentedTabs from "@/components/SegmentedTabs";
-import SymbolIcon from "@/components/SymbolIcon";
-import {
-  type EmergencyContact
-} from "@/constants/emergencyContacts";
-import { findMapRoom, type MapRoom } from "@/constants/mapRooms";
-import { useUser } from "@/contexts/UserContext";
-import { fullName } from "@/lib/attendance";
-import { supabase } from "@/lib/supabase";
-import theme from "@/theme";
 
 type ScheduleItem = {
   optionID: string;
@@ -558,6 +557,7 @@ export default function Home() {
             const start = splitTime(event.startTime);
             const end = splitTime(event.endTime);
             const hasSpeakers = Boolean(event.speakers?.length);
+            const mapRoom = findMapRoom(event.location);
             const notScheduled = Boolean(event.notScheduled);
 
             return (
