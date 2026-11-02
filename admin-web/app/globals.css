@@ -323,6 +323,18 @@ h2 {
   min-width: 0;
 }
 
+.role-badge {
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid var(--ice);
+  border-radius: 999px;
+  background: var(--new);
+  color: var(--blue-dark);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .who-email {
   color: var(--muted);
   font-size: 13px;
@@ -507,14 +519,63 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
-.description {
-  margin: 0;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--rule);
-  background: var(--fill);
+/* Table notes: a small ⓘ at the right of the toolbar instead of a strip of text. */
+.info-note {
+  position: relative;
+  display: inline-flex;
+}
+
+.info-button {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--surface);
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 14px;
+  cursor: help;
+}
+
+.info-button:hover,
+.info-note.open .info-button {
+  border-color: var(--ice);
+  color: var(--ink);
+}
+
+.info-button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.info-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: max-content;
+  max-width: 280px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--ink);
+  box-shadow: var(--shadow-lg);
+  color: #fff;
+  font-size: 12.5px;
+  line-height: 1.45;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s;
+}
+
+.info-note:hover .info-pop,
+.info-note.open .info-pop,
+.info-button:focus-visible + .info-pop {
+  opacity: 1;
+  visibility: visible;
 }
 
 .table-wrap {
@@ -717,6 +778,40 @@ td.actions {
   margin-left: 4px;
 }
 
+/* Delete stays quiet until you're on that row, so the red doesn't fill the page. */
+.actions .btn.danger {
+  border-color: transparent;
+  background: transparent;
+  color: var(--faint);
+}
+
+tbody tr:hover .actions .btn.danger,
+.actions .btn.danger:focus-visible {
+  border-color: #f0c9c5;
+  color: var(--danger);
+}
+
+/* Row IDs stay pinned on the left while scrolling to the far columns. */
+th.key-col,
+td.cell.key {
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  box-shadow: inset -1px 0 0 var(--rule);
+}
+
+th.key-col {
+  z-index: 2;
+}
+
+tbody tr:hover td.cell.key {
+  background: #fbfaf7;
+}
+
+tr.dirty td.cell.key {
+  box-shadow: inset 3px 0 0 var(--changed-mark), inset -1px 0 0 var(--rule);
+}
+
 /* Long-text dialog ----------------------------------------------------------- */
 
 .backdrop {
@@ -803,12 +898,6 @@ td select {
 }
 
 /* Spreadsheet import ---------------------------------------------------------- */
-
-.tab-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin: -6px 0 12px;
-}
 
 .dialog.bulk {
   max-width: 760px;
@@ -1567,9 +1656,265 @@ tbody tr:hover td.att-name {
   }
 }
 
+/* One session's roster */
+.att-pickers {
+  flex: 0 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+}
+
+/* Legend sits at the right of the pickers in a compact block, wrapping to
+   two short lines; on a narrow screen it drops below them. */
+.att-bar .legend {
+  flex: 0 1 340px;
+  justify-content: flex-end;
+  margin-left: auto;
+  gap: 4px 14px;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--fill);
+}
+
+.segmented button {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.segmented button.active {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.chip.stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  text-decoration: none;
+}
+
+.chip.stacked.active {
+  box-shadow: inset 0 -2px 0 var(--blue);
+  padding-bottom: 4px;
+}
+
+.chip-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.seminar-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--fill);
+}
+
+.seminar-pill {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  /* Cards share the row so a whole block (up to 10) fits on one line;
+     they wrap only when the screen is too narrow for that. */
+  flex: 1 1 0;
+  min-width: 76px;
+  max-width: 150px;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.seminar-pill:hover {
+  border-color: var(--ice);
+}
+
+.seminar-pill.active {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+
+.seminar-pill:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.seminar-pill-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.seminar-kind {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--new);
+  color: var(--blue-dark);
+  font-size: 10.5px;
+}
+
+.seminar-pill-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.seminar-pill-count {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.roster-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.roster-head h3 {
+  margin: 0 0 4px;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.roster-head p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.roster-number {
+  color: var(--blue);
+}
+
+.roster-tally {
+  display: flex;
+  gap: 24px;
+  margin: 0;
+}
+
+.roster-tally dt {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.roster-tally dd {
+  margin: 2px 0 0;
+  font-family: var(--serif);
+  font-size: 26px;
+  color: var(--ink);
+}
+
+.roster-tally dd.bad {
+  color: var(--danger);
+}
+
+.roster-tally .muted {
+  font-size: 16px;
+}
+
+.roster-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roster-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.roster-row.empty {
+  justify-content: center;
+  padding: 24px 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.roster-person {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.roster-status {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.roster-row.absent .roster-status {
+  color: var(--danger);
+}
+
+.roster-row.present .roster-status {
+  color: var(--ok);
+}
+
+.roster-empty {
+  margin: 0;
+  padding: 28px 14px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
 /* Narrow screens ------------------------------------------------------------- */
 
 @media (max-width: 640px) {
+  .seminar-pill {
+    min-width: 70px;
+  }
+
+  .roster-status {
+    display: none;
+  }
+
   .masthead-inner,
   .app {
     padding-left: 16px;
@@ -1582,9 +1927,15 @@ tbody tr:hover td.att-name {
     display: none;
   }
 
+  /* Search gets its own line; count and buttons wrap below it. */
   .search {
     min-width: 0;
-    flex: 1;
+    flex: 1 1 100%;
+  }
+
+  .search input {
+    min-width: 0;
+    width: 100%;
   }
 
   .savebar-inner {

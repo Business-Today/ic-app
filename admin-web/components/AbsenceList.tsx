@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { Square, UpdatedLine } from "@/components/CheckInGrid";
+import InfoNote from "@/components/InfoNote";
 import {
   ABSENCE_ALERT,
   ABSENCE_WARN,
@@ -122,12 +123,10 @@ export default function AbsenceList({ data }: { data: AttendanceData }) {
           <button className="btn" disabled={data.loading} onClick={data.refresh}>
             Refresh
           </button>
+          <InfoNote
+            text={`A session counts once it's ${GRACE_MINUTES} minutes past its start and staff have checked at least one person in. Checking in late removes the absence.`}
+          />
         </div>
-
-        <p className="description">
-          A session counts once it&apos;s {GRACE_MINUTES} minutes past its start and staff have
-          checked at least one person in. Checking in late removes the absence.
-        </p>
 
         {data.error && <p className="att-error">{data.error}</p>}
 
