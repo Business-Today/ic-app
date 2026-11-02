@@ -11,8 +11,12 @@ config.transformer = {
 
 config.resolver = {
   ...config.resolver,
-  assetExts: config.resolver.assetExts.filter((ext) => ext !== "svg"),
-  sourceExts: [...config.resolver.sourceExts, "svg"],
+  assetExts: config.resolver.assetExts.filter(
+    (ext) => ext !== "svg"
+  ),
+  sourceExts: [
+    ...new Set([...config.resolver.sourceExts, "svg"]),
+  ],
 };
 
 module.exports = config;
