@@ -127,15 +127,8 @@ export function useTagReader({
         setLastTap({ tagId, ...result });
         hapticFor(result.outcome);
 
-        const icon =
-          result.outcome === "failed"
-            ? "❌"
-            : result.outcome === "rejected"
-              ? "⚠️"
-              : "✅";
-
         return [
-          `${icon} ${result.title.toUpperCase()}`,
+          result.title.toUpperCase(),
           result.detail,
           "",
           `Remove ${noun}. Tap the next one.`,
