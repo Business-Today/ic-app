@@ -177,13 +177,23 @@ export default function Home() {
 
       const normalizedEmail = authUser.email.trim().toLowerCase();
 
-      const { data: attendee, error: profileError } = await supabase
-        .from("attendeeProfile")
-        .select(
-          "email, firstName, lastName, linkedin, instagram, school, major, interests, bio, profilePictureUrl, groupNumber"
-        )
-        .eq("email", normalizedEmail)
-        .maybeSingle();
+      // Attendees can sign in with their school or personal email.
+      const loadProfileBy = (column: "email" | "personalEmail") =>
+        supabase
+          .from("attendeeProfile")
+          .select(
+            "email, firstName, lastName, linkedin, instagram, school, major, interests, bio, profilePictureUrl, groupNumber"
+          )
+          .eq(column, normalizedEmail)
+          .maybeSingle();
+
+      let { data: attendee, error: profileError } =
+        await loadProfileBy("email");
+
+      if (!profileError && !attendee) {
+        ({ data: attendee, error: profileError } =
+          await loadProfileBy("personalEmail"));
+      }
 
       if (profileError || !attendee) {
         console.error("Could not load attendee profile:", profileError);
