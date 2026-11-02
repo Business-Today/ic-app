@@ -13,9 +13,18 @@ export type AddToNetworkResult = "added" | "already_added" | "error";
 export type DirectoryAttendee = Attendee & {
   school: string | null;
   major: string | null;
+  interests: string | null;
   linkedin: string | null;
   instagram: string | null;
+  profilePictureUrl: string | null;
 };
+
+export function profileImageUrl(path: string | null | undefined) {
+  if (!path) return null;
+
+  return supabase.storage.from("profilePictures").getPublicUrl(path).data
+    .publicUrl;
+}
 
 export async function openProfileLink(rawUrl: string, label: string) {
   const trimmed = rawUrl.trim();
@@ -64,7 +73,9 @@ export async function fetchDirectory(): Promise<{
 }> {
   const { data, error } = await supabase
     .from("attendeeProfile")
-    .select("firstName, lastName, email, school, major, linkedin, instagram")
+    .select(
+      "firstName, lastName, email, school, major, interests, linkedin, instagram, profilePictureUrl"
+    )
     .order("lastName", { ascending: true })
     .order("firstName", { ascending: true });
 

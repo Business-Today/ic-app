@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
+import { Pressable, ScrollView, StyleSheet } from "react-native";
+import Animated from "react-native-reanimated";
 
 import theme from "@/theme";
 
@@ -45,15 +46,17 @@ export default function SegmentedTabs<T extends string>({
             onPress={() => onChange(tab.key)}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            style={({ pressed }) => [
-              styles.pill,
-              selected && styles.pillSelected,
-              pressed && styles.pillPressed,
-            ]}
+            style={({ pressed }) => pressed && styles.pillPressed}
           >
-            <Text style={[styles.label, selected && styles.labelSelected]}>
-              {tab.label}
-            </Text>
+            <Animated.View
+              style={[styles.pill, selected && styles.pillSelected]}
+            >
+              <Animated.Text
+                style={[styles.label, selected && styles.labelSelected]}
+              >
+                {tab.label}
+              </Animated.Text>
+            </Animated.View>
           </Pressable>
         );
       })}
@@ -82,6 +85,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 999,
     backgroundColor: theme.colors.fillSecondary,
+    transitionProperty: "backgroundColor",
+    transitionDuration: 200,
   },
   pillSelected: {
     backgroundColor: theme.colors.primaryBlue,
@@ -89,14 +94,16 @@ const styles = StyleSheet.create({
   pillPressed: {
     opacity: 0.7,
   },
+  // One weight for both states, so pills don't change width as they fade.
   label: {
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: -0.2,
     color: theme.colors.textPrimary,
+    transitionProperty: "color",
+    transitionDuration: 200,
   },
   labelSelected: {
     color: "#FFFFFF",
-    fontWeight: "600",
   },
 });

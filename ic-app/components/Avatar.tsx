@@ -1,6 +1,4 @@
-import { Image } from "expo-image";
-import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 
 import { initialsOf } from "@/lib/attendance";
 import theme from "@/theme";
@@ -9,6 +7,7 @@ type Props = {
   firstName?: string | null;
   lastName?: string | null;
   size?: number;
+  /** Drawn over the initials, which still show if the photo can't load. */
   imageUrl?: string | null;
 };
 
@@ -23,9 +22,6 @@ export default function Avatar({
   size = 40,
   imageUrl,
 }: Props) {
-  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
-  const photoLoaded = Boolean(imageUrl) && loadedUrl === imageUrl;
-
   return (
     <View
       style={[
@@ -33,20 +29,11 @@ export default function Avatar({
         { width: size, height: size, borderRadius: size / 2 },
       ]}
     >
-      {photoLoaded ? null : (
-        <Text style={[styles.initials, { fontSize: size * 0.38 }]}>
-          {initialsOf({ firstName, lastName })}
-        </Text>
-      )}
+      <Text style={[styles.initials, { fontSize: size * 0.38 }]}>
+        {initialsOf({ firstName, lastName })}
+      </Text>
       {imageUrl ? (
-        <Image
-          source={imageUrl}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={150}
-          cachePolicy="memory-disk"
-          onLoad={() => setLoadedUrl(imageUrl)}
-        />
+        <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFill} />
       ) : null}
     </View>
   );
