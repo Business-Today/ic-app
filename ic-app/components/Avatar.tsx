@@ -13,7 +13,8 @@ type Props = {
 
 /**
  * Initials in a soft brand-blue circle. One tint everywhere, so lists of
- * people read calmly instead of as a rainbow.
+ * people read calmly instead of as a rainbow. A photo replaces the initials
+ * once it loads; if it's missing or fails, the initials stay.
  */
 export default function Avatar({
   firstName,

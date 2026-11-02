@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -17,6 +17,7 @@ import SymbolIcon from "@/components/SymbolIcon";
 import {
   type EmergencyContact
 } from "@/constants/emergencyContacts";
+import { findMapRoom, type MapRoom } from "@/constants/mapRooms";
 import { useUser } from "@/contexts/UserContext";
 import { fullName } from "@/lib/attendance";
 import { supabase } from "@/lib/supabase";
@@ -132,6 +133,9 @@ export default function Home() {
 
   const [activeTab, setActiveTab] = useState<HomeTab>("schedule");
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [focusedRoom, setFocusedRoom] = useState<MapRoom | null>(null);
+
+  const scrollRef = useRef<ScrollView>(null);
 
   const [groupContacts, setGroupContacts] = useState<EmergencyContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
@@ -399,6 +403,27 @@ export default function Home() {
     return current?.optionID ?? null;
   }, [eventsForDay]);
 
+  function changeTab(tab: HomeTab) {
+    if (tab === activeTab) {
+      return;
+    }
+
+    setFocusedRoom(null);
+    setActiveTab(tab);
+  }
+
+  function showRoomOnMap(room: MapRoom) {
+    setFocusedRoom(room);
+    setActiveTab("map");
+  }
+
+  // The schedule can be scrolled well past where the map will sit.
+  useEffect(() => {
+    if (focusedRoom) {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+  }, [focusedRoom]);
+
   async function callContact(name: string, phone: string) {
     if (!phone) {
       Alert.alert(
@@ -538,7 +563,6 @@ export default function Home() {
             return (
               <Pressable
                 key={event.optionID}
-                disabled={!hasSpeakers}
                 onPress={() =>
                   setExpandedEventId(expanded ? null : event.optionID)
                 }
@@ -586,7 +610,7 @@ export default function Home() {
                         highlighted && styles.textOnBlue,
                         notScheduled && styles.textNotScheduled,
                       ]}
-                      numberOfLines={expanded || !hasSpeakers ? undefined : 1}
+                      numberOfLines={expanded ? undefined : 1}
                     >
                       {event.title ?? "Untitled session"}
                     </Text>
@@ -595,7 +619,7 @@ export default function Home() {
                         styles.sessionLocation,
                         highlighted && styles.textOnBlueMuted,
                       ]}
-                      numberOfLines={expanded || !hasSpeakers ? undefined : 1}
+                      numberOfLines={expanded ? undefined : 1}
                     >
                       {notScheduled
                         ? "You are not scheduled for this time"
@@ -603,24 +627,22 @@ export default function Home() {
                     </Text>
                   </View>
 
-                  {hasSpeakers ? (
-                    <SymbolIcon
-                      name={expanded ? "chevron.down" : "chevron.right"}
-                      fallback={expanded ? "chevron-down" : "chevron-forward"}
-                      size={16}
-                      weight="semibold"
-                      color={
-                        highlighted
-                          ? "rgba(255,255,255,0.8)"
-                          : theme.colors.labelTertiary
-                      }
-                    />
-                  ) : null}
+                  <SymbolIcon
+                    name={expanded ? "chevron.down" : "chevron.right"}
+                    fallback={expanded ? "chevron-down" : "chevron-forward"}
+                    size={16}
+                    weight="semibold"
+                    color={
+                      highlighted
+                        ? "rgba(255,255,255,0.8)"
+                        : theme.colors.labelTertiary
+                    }
+                  />
                 </View>
 
-                {expanded && event.speakers?.length ? (
+                {expanded && (hasSpeakers || mapRoom) ? (
                   <View style={styles.sessionSpeakers}>
-                    {event.speakers.map((speaker) => {
+                    {event.speakers?.map((speaker) => {
                       const hasBio = Boolean(speaker.bio?.trim());
 
                       return (
@@ -678,6 +700,35 @@ export default function Home() {
                         </Pressable>
                       );
                     })}
+
+                    {mapRoom ? (
+                      <Pressable
+                        onPress={() => showRoomOnMap(mapRoom)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Show ${event.location} on map`}
+                        style={({ pressed }) => [
+                          styles.showOnMapRow,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <SymbolIcon
+                          name="map"
+                          fallback="map-outline"
+                          size={18}
+                          color={
+                            highlighted ? "#FFFFFF" : theme.colors.primaryBlue
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.showOnMapText,
+                            highlighted && styles.textOnBlue,
+                          ]}
+                        >
+                          Show on map
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 ) : null}
               </Pressable>
@@ -692,7 +743,7 @@ export default function Home() {
     return (
       <>
         <Text style={styles.sectionTitle}>Conference Map</Text>
-        <ConferenceMap />
+        <ConferenceMap focusRoom={focusedRoom} />
       </>
     );
   }
@@ -776,6 +827,7 @@ export default function Home() {
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
@@ -784,7 +836,7 @@ export default function Home() {
         <SegmentedTabs
           tabs={HOME_TABS}
           value={activeTab}
-          onChange={setActiveTab}
+          onChange={changeTab}
         />
 
         <View style={styles.tabContent}>
@@ -933,6 +985,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.labelSecondary,
     marginTop: 2,
+  },
+  showOnMapRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+  },
+  showOnMapText: {
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: -0.2,
+    color: theme.colors.primaryBlue,
   },
   textOnBlue: {
     color: "#FFFFFF",
