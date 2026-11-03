@@ -13,6 +13,7 @@ import {
   FlatList,
   Keyboard,
   Pressable,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -147,6 +148,7 @@ async function connectFromBadge(
 export default function Network() {
   const router = useRouter();
   const { user } = useUser();
+  const canTapBadges = Platform.OS === "ios";
 
   const [activeTab, setActiveTab] = useState<NetworkTab>("network");
 
@@ -537,7 +539,11 @@ export default function Network() {
 
     return (
       <Text style={styles.emptyText}>
-        No connections yet. Tap a badge or scan a QR code to connect with someone.
+        No connections yet.{" "}
+        {canTapBadges
+          ? "Tap a badge or scan a QR code"
+          : "Scan a QR code"}{" "}
+        to connect with someone.
       </Text>
     );
   }
@@ -569,30 +575,32 @@ export default function Network() {
       hint="Point your camera at another attendee's code."
       onBarcodeScanned={(event) => void handleBarcodeScanned(event)}
       nfc={
-        <NfcTapView
-          state={tap.state}
-          copy={BADGE_TAP_COPY}
-          compactRingSize={BADGE_RING_SIZE}
-          pillButtons
-          footer={
-            tap.lastTap ? (
-              <View style={styles.tapFeedback}>
-                <OutcomeIcon outcome={tap.lastTap.outcome} size={26} />
-                <View style={styles.tapFeedbackText}>
-                  <Text style={styles.tapFeedbackTitle} numberOfLines={1}>
-                    {tap.lastTap.title}
-                  </Text>
-                  <Text style={styles.tapFeedbackDetail} numberOfLines={2}>
-                    {tap.lastTap.detail}
-                  </Text>
+        canTapBadges ? (
+          <NfcTapView
+            state={tap.state}
+            copy={BADGE_TAP_COPY}
+            compactRingSize={BADGE_RING_SIZE}
+            pillButtons
+            footer={
+              tap.lastTap ? (
+                <View style={styles.tapFeedback}>
+                  <OutcomeIcon outcome={tap.lastTap.outcome} size={26} />
+                  <View style={styles.tapFeedbackText}>
+                    <Text style={styles.tapFeedbackTitle} numberOfLines={1}>
+                      {tap.lastTap.title}
+                    </Text>
+                    <Text style={styles.tapFeedbackDetail} numberOfLines={2}>
+                      {tap.lastTap.detail}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ) : null
-          }
-          onStart={() => void tap.start()}
-          onStop={tap.stop}
-          onOpenSettings={() => void openNfcSettings()}
-        />
+              ) : null
+            }
+            onStart={() => void tap.start()}
+            onStop={tap.stop}
+            onOpenSettings={() => void openNfcSettings()}
+          />
+        ) : undefined
       }
       myCode={myCode}
       mode={layerMode}
@@ -729,7 +737,9 @@ export default function Network() {
           <Pressable
             onPress={() => void openScanner()}
             accessibilityRole="button"
-            accessibilityLabel="Scan, tap or show my code"
+            accessibilityLabel={
+              canTapBadges ? "Scan, tap or show my code" : "Scan or show my code"
+            }
             style={({ pressed }) => [
               styles.scanPill,
               pressed && styles.pressed,
@@ -804,7 +814,7 @@ const styles = StyleSheet.create({
   // 24pt fade the bar draws over the screen.
   scanPillPosition: {
     position: "absolute",
-    bottom: 28,
+    bottom: Platform.OS === "android" ? 68 : 28,
     alignSelf: "center",
   },
   scanPill: {
