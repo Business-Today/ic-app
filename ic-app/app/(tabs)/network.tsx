@@ -311,7 +311,9 @@ export default function Network() {
     return (directory ?? []).filter(
       (attendee) =>
         normalizeEmail(attendee.email) !== me &&
-        (!term || fullName(attendee).toLowerCase().includes(term))
+        (!term ||
+          fullName(attendee).toLowerCase().includes(term) ||
+          attendee.school?.toLowerCase().includes(term))
     );
   }, [directory, query, userEmail]);
 
@@ -659,7 +661,7 @@ export default function Network() {
                     <View style={styles.searchField}>
                       <SearchField
                         pill
-                        placeholder="Search by name"
+                        placeholder="Search by name or school"
                         value={query}
                         onChangeText={setQuery}
                         autoFocus

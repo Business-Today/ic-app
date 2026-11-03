@@ -64,7 +64,8 @@ export default function TabLayout() {
           paddingHorizontal: canTakeAttendance ? 40 : 64,
           height: TAB_BAR_HEIGHT,
           paddingTop: 10,
-          paddingBottom: insets.bottom,
+          bottom: Platform.OS === "android" ? insets.bottom : 0,
+          paddingBottom: Platform.OS === "ios" ? insets.bottom : 0,
         },
         tabBarItemStyle: {
           paddingVertical: 0,

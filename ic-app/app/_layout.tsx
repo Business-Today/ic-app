@@ -1,4 +1,9 @@
-import { Stack, useRouter, useSegments } from "expo-router";
+import {
+  Stack,
+  useRootNavigationState,
+  useRouter,
+  useSegments,
+} from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
@@ -18,9 +23,11 @@ const attendanceScreenOptions = {
 function AuthGate() {
   const router = useRouter();
   const segments = useSegments();
+  const rootNavigationState = useRootNavigationState();
 
   const [isLoading, setIsLoading] = useState(true);
   const [hasSession, setHasSession] = useState(false);
+  const navigationReady = rootNavigationState?.key != null;
 
   useEffect(() => {
     let isMounted = true;
@@ -59,7 +66,7 @@ function AuthGate() {
   }, []);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !navigationReady) return;
 
     const rootSegment = segments[0];
     const isOnLoginScreen = rootSegment === "login";
@@ -72,9 +79,9 @@ function AuthGate() {
     if (hasSession && isOnLoginScreen) {
       router.replace("/(tabs)");
     }
-  }, [hasSession, isLoading, router, segments]);
+  }, [hasSession, isLoading, navigationReady, router, segments]);
 
-  if (isLoading) {
+  if (isLoading || !navigationReady) {
     return (
       <View
         style={{

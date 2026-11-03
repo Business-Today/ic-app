@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -322,12 +323,20 @@ export default function Attendance() {
     ? sessionDetailLine(selectedSession, speakerMap)
     : "";
 
-  const renderFeedback = (item: ScanFeedback, idleIcon: IdleIcon) => (
+  const renderFeedback = (
+    item: ScanFeedback,
+    idleIcon: IdleIcon,
+    moveUp = false
+  ) => (
     <Pressable
       onPress={openRoster}
       accessibilityRole="button"
       accessibilityLabel={`${checkedInCount ?? 0} checked in. See who has and hasn't checked in.`}
-      style={({ pressed }) => [styles.feedback, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.feedback,
+        moveUp && styles.scanFeedback,
+        pressed && styles.pressed,
+      ]}
     >
       {item.outcome ? (
         <OutcomeIcon outcome={item.outcome} size={26} />
@@ -400,10 +409,14 @@ export default function Attendance() {
       onModeChange={changeLayerMode}
       onBarcodeScanned={(event) => void handleBarcodeScanned(event)}
       hint={selectedSession?.title}
-      footer={renderFeedback(feedback, {
-        name: "qrcode.viewfinder",
-        fallback: "qr-code-outline",
-      })}
+      footer={renderFeedback(
+        feedback,
+        {
+          name: "qrcode.viewfinder",
+          fallback: "qr-code-outline",
+        },
+        true
+      )}
       nfc={
         <NfcTapView
           state={nfc.state}
@@ -593,7 +606,9 @@ export default function Attendance() {
         <Modal
           visible={pickerOpen}
           animationType="slide"
-          presentationStyle="pageSheet"
+          presentationStyle={
+            Platform.OS === "ios" ? "pageSheet" : "fullScreen"
+          }
           onRequestClose={() => setPickerOpen(false)}
         >
           <View style={styles.sheet}>
@@ -851,6 +866,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 20,
     backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  scanFeedback: {
+    marginTop: -8,
   },
   feedbackText: {
     flex: 1,

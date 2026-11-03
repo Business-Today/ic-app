@@ -62,14 +62,6 @@ export default function RevealLayer({
   const [visible, setVisible] = useState(open);
   const [height, setHeight] = useState(0);
 
-  // Mount the layer the moment it is asked to open, before the first frame.
-  const [prevOpen, setPrevOpen] = useState(open);
-
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-    if (open) setVisible(true);
-  }
-
   // Distance the sheet travels, which is also the height of the exposed area.
   const travel = Math.max(height - insets.bottom - PEEK_ABOVE_INSET, 1);
 
@@ -160,7 +152,7 @@ export default function RevealLayer({
 
   return (
     <View style={styles.root} onLayout={handleLayout}>
-      {visible ? (
+      {open || visible ? (
         <Animated.View style={[StyleSheet.absoluteFill, layerStyle]}>
           {renderContent({ height: travel, topInset: insets.top })}
 

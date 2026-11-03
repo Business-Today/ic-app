@@ -212,7 +212,10 @@ export default function QrScanContent({
                   }
                 >
                   {hint ? (
-                    <Text style={styles.hint} numberOfLines={2}>
+                    <Text
+                      style={[styles.hint, styles.scanHint]}
+                      numberOfLines={2}
+                    >
                       {hint}
                     </Text>
                   ) : null}
@@ -490,6 +493,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   hint: scanTextStyles.hint,
+  scanHint: {
+    marginTop: 20,
+  },
   footer: scanTextStyles.footer,
   // My Code
   codeName: {

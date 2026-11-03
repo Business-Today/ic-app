@@ -427,9 +427,30 @@ async function recordHistory(
     return false;
   }
 
+  const authEmail = normalizeEmail(user.email);
+  let scannedByEmail = authEmail;
+
+  if (!authEmail.endsWith("@princeton.edu")) {
+    const { data: attendee, error: attendeeError } = await supabase
+      .from("attendeeProfile")
+      .select("email")
+      .eq("personalEmail", authEmail)
+      .maybeSingle<{ email: string }>();
+
+    if (attendeeError || !attendee?.email) {
+      console.error(
+        "Could not resolve the signed-in user's Princeton email:",
+        attendeeError
+      );
+      return false;
+    }
+
+    scannedByEmail = normalizeEmail(attendee.email);
+  }
+
   const { error } = await supabase.from("attendanceHistory").insert({
     eventID,
-    scannedByEmail: normalizeEmail(user.email),
+    scannedByEmail,
     attendeeEmail,
     action,
     manual,

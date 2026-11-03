@@ -58,6 +58,13 @@ export function formatTagId(tagId: string): string {
 }
 
 let started = false;
+let androidReaderOperation: Promise<void> = Promise.resolve();
+
+function queueAndroidReaderOperation(operation: () => Promise<void>) {
+  const next = androidReaderOperation.catch(() => {}).then(operation);
+  androidReaderOperation = next.catch(() => {});
+  return next;
+}
 
 export async function getNfcStatus(): Promise<NfcStatus> {
   const nfc = loadNfc();
@@ -132,7 +139,9 @@ export function startTagListener(options: TagListenerOptions): () => void {
       void NfcManager.cancelTechnologyRequest();
     } else {
       NfcManager.setEventListener(nfc.NfcEvents.DiscoverTag, null);
-      void NfcManager.unregisterTagEvent();
+      void queueAndroidReaderOperation(() =>
+        NfcManager.unregisterTagEvent()
+      );
     }
   };
 }
@@ -223,17 +232,29 @@ async function runAndroidReaderMode(
   });
 
   try {
-    await NfcManager.registerTagEvent({
-      alertMessage: options.alertMessage,
-      // Reader mode bypasses Android's system NDEF handling, so tapping a tag
-      // never opens another app and non-NDEF (blank) tags are reported too.
-      isReaderModeEnabled: true,
-      readerModeFlags:
-        NfcAdapter.FLAG_READER_NFC_A |
-        NfcAdapter.FLAG_READER_NFC_B |
-        NfcAdapter.FLAG_READER_NFC_F |
-        NfcAdapter.FLAG_READER_NFC_V |
-        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
+    await queueAndroidReaderOperation(async () => {
+      // A previous screen may still be finishing unregisterTagEvent. Android
+      // only permits one reader registration at a time, so serialize the
+      // teardown and setup instead of allowing an intermittent registration
+      // failure to stop attendance scanning.
+      // Unregister is also used as a stale-session cleanup step; native NFC
+      // treats "nothing registered" as a harmless cleanup failure.
+      await NfcManager.unregisterTagEvent().catch(() => {});
+
+      if (!state.active) return;
+
+      await NfcManager.registerTagEvent({
+        alertMessage: options.alertMessage,
+        // Reader mode bypasses Android's system NDEF handling, so tapping a tag
+        // never opens another app and non-NDEF (blank) tags are reported too.
+        isReaderModeEnabled: true,
+        readerModeFlags:
+          NfcAdapter.FLAG_READER_NFC_A |
+          NfcAdapter.FLAG_READER_NFC_B |
+          NfcAdapter.FLAG_READER_NFC_F |
+          NfcAdapter.FLAG_READER_NFC_V |
+          NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
+      });
     });
   } catch (error) {
     if (state.active) {
