@@ -514,6 +514,7 @@ export default function Network() {
 
   function openProfile(person: DirectoryAttendee) {
     const email = normalizeEmail(person.email);
+    const showSocials = !isDirectory;
 
     router.push({
       pathname: "/directoryProfile",
@@ -528,6 +529,7 @@ export default function Network() {
         profilePictureUrl: person.profilePictureUrl ?? "",
         linkedin: person.linkedin ?? "",
         instagram: person.instagram ?? "",
+        showSocials: showSocials ? "true" : "false",
       },
     });
   }
@@ -715,7 +717,7 @@ export default function Network() {
                     imageUrl={profileImageUrl(item.profilePictureUrl)}
                   />
                 }
-                title={fullName(item) || item.email}
+                title={fullName(item) || "Attendee"}
                 subtitle={[item.school?.trim(), item.major?.trim()]
                   .filter(Boolean)
                   .join(" · ")}

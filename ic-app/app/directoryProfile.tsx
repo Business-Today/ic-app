@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from "expo-router";
-import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import Avatar from "@/components/Avatar";
 import ListRow, { ListGroup } from "@/components/ListRow";
@@ -20,14 +20,16 @@ export default function DirectoryProfile() {
     profilePictureUrl?: string;
     linkedin?: string;
     instagram?: string;
+    showSocials?: string;
   }>();
 
-  const name = fullName(params) || params.email;
+  const name = fullName(params) || "Attendee";
   const subtitle = [params.school?.trim(), params.major?.trim()]
     .filter(Boolean)
     .join(" · ");
   const interests = params.interests?.trim();
   const bio = params.bio?.trim();
+  const showSocials = params.showSocials === "true";
 
   return (
     <>
@@ -46,17 +48,15 @@ export default function DirectoryProfile() {
           />
           <Text style={styles.name}>{name}</Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-          <SocialLinks linkedin={params.linkedin} instagram={params.instagram} />
+          {showSocials ? (
+            <SocialLinks
+              linkedin={params.linkedin}
+              instagram={params.instagram}
+            />
+          ) : null}
         </View>
 
         <ListGroup>
-          <ListRow
-            title="Email"
-            subtitle={params.email}
-            subtitleLines={1}
-            divider
-            onPress={() => void Linking.openURL(`mailto:${params.email}`)}
-          />
           <ListRow
             title="Bio"
             subtitle={bio || "Not added"}
