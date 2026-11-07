@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ATTENDEE_SELECT,
   SESSION_SELECT,
+  isStaffEmail,
   sortAttendees,
   sortSessions,
   type AttendanceAttendee,
@@ -57,7 +58,12 @@ export function useAttendance(active: boolean): AttendanceData {
       const failed = s.error ?? a.error;
       setError(failed ? `Could not load attendance: ${failed.message}` : null);
       if (!s.error) setSessions(((s.data ?? []) as AttendanceSession[]).sort(sortSessions));
-      if (!a.error) setAttendees(((a.data ?? []) as unknown as AttendanceAttendee[]).sort(sortAttendees));
+      if (!a.error)
+        setAttendees(
+          ((a.data ?? []) as unknown as AttendanceAttendee[])
+            .filter((attendee) => !isStaffEmail(attendee.email))
+            .sort(sortAttendees)
+        );
       setUpdatedAt(Date.now());
       setNow(Date.now());
       setLoading(false);
