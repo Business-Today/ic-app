@@ -52,8 +52,22 @@ export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+/**
+ * Princeton addresses are staff, not attendees: never expected at a session,
+ * never counted absent. Same rule as the app (ic-app/lib/attendance.ts).
+ */
+export function isStaffEmail(email: string) {
+  return normalizeEmail(email).endsWith("@princeton.edu");
+}
+
+/** Checked-in attendee emails; staff scans (often tests) are ignored. */
 export function parseEmails(raw: string | null): Set<string> {
-  return new Set((raw ?? "").split(",").map(normalizeEmail).filter(Boolean));
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map(normalizeEmail)
+      .filter((email) => email && !isStaffEmail(email))
+  );
 }
 
 export function attendeeName(a: AttendanceAttendee) {
