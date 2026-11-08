@@ -10,6 +10,10 @@ import { supabase } from "@/lib/supabase";
 export const CONFERENCE_ENDS_AT = new Date("2026-11-08T22:00:00Z").getTime();
 
 export function isConferenceOver(now = Date.now()) {
+  // Lets testers see the thank-you mode early with a dev build:
+  //   EXPO_PUBLIC_FORCE_THANK_YOU=1 npx expo start
+  if (process.env.EXPO_PUBLIC_FORCE_THANK_YOU === "1") return true;
+
   return now >= CONFERENCE_ENDS_AT;
 }
 
