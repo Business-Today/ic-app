@@ -12,6 +12,7 @@ import "react-native-reanimated";
 import Toast from "react-native-toast-message";
 import HeaderBackButton from "../components/HeaderBackButton";
 import { UserProvider } from "../contexts/UserContext";
+import { AFTER_CONFERENCE_ROUTES, isConferenceOver } from "../lib/conference";
 import { supabase } from "../lib/supabase";
 
 // The attendance screens draw their own back chevron and title, so the
@@ -28,6 +29,19 @@ function AuthGate() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const navigationReady = rootNavigationState?.key != null;
+
+  // Flips once when the last session ends, even with the app left open.
+  const [conferenceOver, setConferenceOver] = useState(() => isConferenceOver());
+
+  useEffect(() => {
+    if (conferenceOver) return;
+
+    const timer = setInterval(() => {
+      if (isConferenceOver()) setConferenceOver(true);
+    }, 60_000);
+
+    return () => clearInterval(timer);
+  }, [conferenceOver]);
 
   useEffect(() => {
     let isMounted = true;
@@ -77,9 +91,20 @@ function AuthGate() {
     }
 
     if (hasSession && isOnLoginScreen) {
-      router.replace("/(tabs)");
+      router.replace(conferenceOver ? "/thankYou" : "/(tabs)");
+      return;
     }
-  }, [hasSession, isLoading, navigationReady, router, segments]);
+
+    // After the conference, only the thank-you screen, connections and their
+    // profiles are left; everything else goes back to the thank-you screen.
+    if (
+      hasSession &&
+      conferenceOver &&
+      !AFTER_CONFERENCE_ROUTES.has(rootSegment ?? "")
+    ) {
+      router.replace("/thankYou");
+    }
+  }, [conferenceOver, hasSession, isLoading, navigationReady, router, segments]);
 
   if (isLoading || !navigationReady) {
     return (
@@ -116,6 +141,13 @@ function AuthGate() {
         name="(tabs)"
         options={{ headerShown: false }}
       />
+
+      <Stack.Screen
+        name="thankYou"
+        options={{ headerShown: false, gestureEnabled: false }}
+      />
+
+      <Stack.Screen name="connections" options={{ headerShown: false }} />
 
       <Stack.Screen name="attendanceRecords" options={attendanceScreenOptions} />
 
